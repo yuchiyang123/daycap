@@ -1,0 +1,9 @@
+.env
+**/bin/
+**/obj/
+backend/DayCap.Api/data/
+node_modules/
+frontend/dist/
+*.local
+.vs/
+.idea/

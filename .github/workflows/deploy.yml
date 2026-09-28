@@ -1,0 +1,23 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    # CI 全過才部署；跑在 yang 主機上這個專案專屬的 self-hosted runner。
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: [self-hosted, linux, daycap]
+    steps:
+      # 不用 actions/checkout：它會 git clean 掉部署機上的 .env。直接在 clone 好的目錄 pull。
+      - name: Pull latest
+        run: git -C ~/projects/daycap pull --ff-only
+
+      - name: Build & deploy via Docker
+        run: |
+          cd ~/projects/daycap
+          docker compose up -d --build
+          docker image prune -f
