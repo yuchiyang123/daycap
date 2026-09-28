@@ -9,7 +9,13 @@ public record PeriodView(
     DateOnly StartDate,
     DateOnly EndDate,
     DateOnly Today,
+    // 實領 = 設定的月收入 + 本期薪資調整
     int Income,
+    int BaseIncome,
+    List<IncomeAdjustmentView> IncomeAdjustments,
+    bool IncomeConfirmed,
+    DateTime? SettledAt,
+    int? SettlementAmount,
     PoolView Pool,
     List<CategoryView> Categories,
     List<DayView> Days,
@@ -21,7 +27,8 @@ public record PoolView(int Opening, int Balance, List<PoolLine> Lines);
 
 /// <summary>
 /// Kind：Opening（期初）、Surplus（少花存入）、Cover（超支從待定區扣）、
-/// Unabsorbed（後續天數不夠攤，只好從待定區扣到負）、EnvelopeOver（月額度類超支）、Transfer（手動）。
+/// Unabsorbed（後續天數不夠攤，只好從待定區扣到負）、EnvelopeOver（月額度類超支）、Transfer（手動）、
+/// Income（薪資調整）、Allocate（分配給分類）。
 /// </summary>
 public record PoolLine(DateOnly Date, int Amount, string Kind, string Label, int? EntryId, int? TransferId);
 
@@ -34,7 +41,9 @@ public record CategoryView(
     int Scheduled,
     int Spent,
     int PlannedRemaining,
-    int Projected);
+    int Projected,
+    // 從待定區分配進來、加在額度上的金額（Budget 已包含）
+    int Allocated);
 
 public record DayView(
     DateOnly Date,
@@ -80,7 +89,15 @@ public record EntryView(
 
 public record FixedChargeView(int Id, int CategoryId, string Name, int Amount, DateOnly? DueDate, bool IsSubscription);
 
-public record PoolTransferView(int Id, DateOnly Date, int Amount, string Note);
+public record PoolTransferView(int Id, DateOnly Date, int Amount, string Note, int? CategoryId);
+
+public record IncomeAdjustmentView(int Id, IncomeAdjustmentKind Kind, decimal? Days, decimal? Hours, int Amount, string? Note, string Label);
+
+/// <summary>Amount 一律填正數，是加是扣由 Kind 決定。</summary>
+public record CreateIncomeAdjustmentRequest(IncomeAdjustmentKind Kind, decimal? Days, decimal? Hours, int Amount, string? Note);
+
+/// <summary>分配待定區：Mode = single（全部給 CategoryId）或 proportional（依額度比例分給所有變動分類）。</summary>
+public record AllocateRequest(string Mode, int? CategoryId, int Amount);
 
 public record CreateEntryRequest(
     DateOnly Date,
@@ -102,4 +119,6 @@ public record CreatePoolTransferRequest(DateOnly Date, int Amount, string Note);
 public record RebuildRequest(DateOnly? FromDate);
 
 /// <summary>還沒到開始日期時，/api/periods/current 回 409 並帶這個內容。</summary>
+public record SettlementPayload(string Label, int Balance, int Applied, string? AccountName);
+
 public record NotStartedDto(DateOnly StartDate, DateOnly FirstPeriodStart, DateOnly FirstPeriodEnd, int DaysUntilStart);

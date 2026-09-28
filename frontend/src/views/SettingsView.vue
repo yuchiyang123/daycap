@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
-import { deleteBeforeStart, getCalendar, getSettings, rebuildPeriod, saveSettings, setDayOverride, logout } from '../api/endpoints'
-import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, SettingsDto } from '../api/types'
+import { deleteBeforeStart, getAssets, getCalendar, getSettings, rebuildPeriod, saveSettings, setDayOverride, logout } from '../api/endpoints'
+import type { BudgetMode, CalendarDayDto, CashAccountDto, CategoryDto, CategoryGroup, SettingsDto } from '../api/types'
 import { store, setPeriod, loadCurrentPeriod } from '../lib/store'
 import { dayLabel, groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
 import { applyTheme, currentTheme, type ThemeChoice } from '../lib/theme'
@@ -19,6 +19,7 @@ onMounted(async () => {
   try {
     draft.value = await getSettings()
     savedStart.value = draft.value.startDate
+    accounts.value = (await getAssets()).cashAccounts
     await loadCalendar()
   } catch (e) {
     error.value = (e as Error).message
@@ -42,6 +43,35 @@ function amountOf(c: CategoryDto): number {
 }
 const allocated = computed(() => draft.value?.categories.reduce((a, c) => a + amountOf(c), 0) ?? 0)
 const unallocated = computed(() => income.value - allocated.value)
+
+// ---- 未分配的 % 一鍵分出去 ----
+const accounts = ref<CashAccountDto[]>([])
+const variableCats = computed(() => draft.value?.categories.filter((c) => c.mode !== 'Fixed') ?? [])
+const giveTarget = ref<number>(-1)
+const unallocatedPct = computed(() => (income.value > 0 ? Math.floor((unallocated.value / income.value) * 10000) / 100 : 0))
+const round2 = (x: number) => Math.round(x * 100) / 100
+
+/** 把未分配的 % 全部加到一個分類上 */
+function giveAll() {
+  const c = variableCats.value[giveTarget.value] ?? variableCats.value[0]
+  if (!c || unallocatedPct.value <= 0) return
+  c.percent = round2((Number(c.percent) || 0) + unallocatedPct.value)
+  touch()
+}
+
+/** 依各分類目前的 % 比例，把未分配的 % 分到所有每日 / 月額度分類 */
+function spreadAll() {
+  const cats = variableCats.value
+  const total = cats.reduce((a, c) => a + (Number(c.percent) || 0), 0)
+  if (!cats.length || unallocatedPct.value <= 0) return
+  let left = unallocatedPct.value
+  cats.forEach((c, i) => {
+    const share = i === cats.length - 1 ? left : round2(total > 0 ? (unallocatedPct.value * (Number(c.percent) || 0)) / total : unallocatedPct.value / cats.length)
+    c.percent = round2((Number(c.percent) || 0) + share)
+    left = round2(left - share)
+  })
+  touch()
+}
 
 const SLOTS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6', '--series-7', '--series-8']
 const segments = computed<Segment[]>(() => {
@@ -114,6 +144,8 @@ async function save() {
       monthlyIncome: Math.round(Number(draft.value.monthlyIncome) || 0),
       cycleStartDay: Math.round(Number(draft.value.cycleStartDay) || 1),
       startDate: draft.value.startDate || null,
+      settlementAccountId: draft.value.settlementAccountId || null,
+      surplusToAccount: !!draft.value.surplusToAccount,
       categories: draft.value.categories.map((c) => ({
         ...c,
         percent: Number(c.percent) || 0,
@@ -280,6 +312,42 @@ async function signOut() {
         </h2>
         <div class="panel panel-pad">
           <AllocationBar :segments="segments" :total="income" caption="收入分配預覽" />
+          <div v-if="unallocated > 0 && variableCats.length" class="give">
+            <span class="num">還有 <b>{{ money(unallocated) }}</b>（{{ unallocatedPct }}%）沒分配</span>
+            <div class="give-row">
+              <select v-model.number="giveTarget" class="select compact" aria-label="分給哪個分類">
+                <option :value="-1" disabled>選一個分類</option>
+                <option v-for="(c, i) in variableCats" :key="i" :value="i">{{ c.name || '（未命名）' }}</option>
+              </select>
+              <button type="button" class="btn sm" :disabled="giveTarget < 0" @click="giveAll">全部給它</button>
+              <button type="button" class="btn sm" @click="spreadAll">依比例分到全部</button>
+            </div>
+            <p class="muted small">不分也沒關係：沒分配的錢每期會進待定區，拿來補超支。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">期末結算<span class="aside">發薪日自動處理上一期</span></h2>
+        <div class="panel panel-pad settle">
+          <label class="field">
+            超支從哪個帳戶扣
+            <select v-model="draft.settlementAccountId" class="select" @change="touch">
+              <option :value="null">不自動扣，只提醒</option>
+              <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}（{{ money(a.balance) }}）</option>
+            </select>
+          </label>
+          <label class="check">
+            <input v-model="draft.surplusToAccount" type="checkbox" :disabled="!draft.settlementAccountId" @change="touch" />
+            <span>
+              結餘自動存入同一個帳戶
+              <span class="hint">不勾的話，花不完的錢不會動到資產</span>
+            </span>
+          </label>
+          <p class="muted small">
+            上一期結束後，待定區還是負的（也就是超支），發薪日會從這個帳戶扣掉；發薪日前 5 天會先提醒。
+            <template v-if="accounts.length === 0">還沒有存款帳戶，先到資產頁新增。</template>
+          </p>
         </div>
       </section>
 
@@ -425,6 +493,30 @@ async function signOut() {
 .two {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.give {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+.give-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.give-row .select {
+  width: auto;
+  min-width: 140px;
+  flex: 1;
+}
+.settle {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 .start-row {

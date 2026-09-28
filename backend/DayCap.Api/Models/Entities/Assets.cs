@@ -62,3 +62,41 @@ public class PriceQuote
     public DateOnly TradeDate { get; set; }
     public DateTime FetchedAt { get; set; }
 }
+
+/// <summary>
+/// 直接加減某個存款帳戶的一筆紀錄（記帳頁的「資產加減」，或週期結算自動扣除 / 存入）。
+/// 新增時同步改帳戶餘額，刪除時反向還原。
+/// </summary>
+public class AssetAdjustment
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = "";
+    public int CashAccountId { get; set; }
+    public DateOnly Date { get; set; }
+    public int Amount { get; set; }
+    public string Note { get; set; } = "";
+
+    /// <summary>manual = 記帳頁手動；settlement = 週期結算。</summary>
+    public string Source { get; set; } = "manual";
+
+    public int? PeriodId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// 站內通知（右上角鈴鐺）。Key 對同一件事唯一，避免重複產生。
+/// PopupOn = 只有這天第一次打開 app 時跳出來；ReadAt = 在鈴鐺裡看過（紅點消失）。
+/// </summary>
+public class Notification
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = "";
+    public string Key { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public int? PeriodId { get; set; }
+    public DateOnly? PopupOn { get; set; }
+    public DateTime? PopupShownAt { get; set; }
+    public DateTime? ReadAt { get; set; }
+    public string? Payload { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}

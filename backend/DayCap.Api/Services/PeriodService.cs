@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DayCap.Api.Common;
 using DayCap.Api.Data;
 using DayCap.Api.Models.Dtos;
@@ -37,6 +38,9 @@ public class PeriodService(
 
         // 開始日期之前留下的週期（試用時產生的）一律忽略。
         var minStart = profile.StartDate ?? DateOnly.MinValue;
+
+        // 發薪日後第一次打開：把已經結束、還沒結算的週期結算掉（超支扣資產 / 結餘存入）。
+        await SettleEndedPeriodsAsync(userId, profile, minStart, today, ct);
         var existing = await db.Periods
             .Where(p => p.UserId == userId && p.StartDate >= minStart && p.StartDate <= today && p.EndDate >= today)
             .Select(p => (int?)p.Id)
@@ -54,8 +58,76 @@ public class PeriodService(
         var period = new BudgetPeriod { UserId = userId, StartDate = start, EndDate = end, CreatedAt = clock.UtcNow };
         db.Periods.Add(period);
         await BuildAsync(period, profile, start, ct);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // 同時有兩個請求都在建這一期（唯一索引 UserId + StartDate 擋下其中一個）：改讀已經建好的那一期
+            db.ChangeTracker.Clear();
+            var winner = await db.Periods.Where(p => p.UserId == userId && p.StartDate == start).Select(p => (int?)p.Id).FirstOrDefaultAsync(ct);
+            if (winner is null) throw;
+            return await GetAsync(userId, winner.Value, ct);
+        }
         return await ComputeAsync(period, ct);
+    }
+
+    /// <summary>
+    /// 期末結算：週期結束後，待定區餘額就是這期「收入 − 實際花掉的」。
+    /// 負的（超支）→ 從結算帳戶扣掉；正的（結餘）→ 設定了 SurplusToAccount 才存進去，否則不動。
+    /// 沒設定結算帳戶就只記錄、只通知。每期只結算一次。
+    /// </summary>
+    private async Task SettleEndedPeriodsAsync(string userId, UserProfile profile, DateOnly minStart, DateOnly today, CancellationToken ct)
+    {
+        var ids = await db.Periods
+            .Where(p => p.UserId == userId && p.SettledAt == null && p.EndDate < today && p.StartDate >= minStart)
+            .OrderBy(p => p.StartDate)
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+
+        foreach (var id in ids)
+        {
+            var period = await LoadAsync(userId, id, ct);
+            var balance = (await ComputeAsync(period, ct)).Pool.Balance;
+            var account = profile.SettlementAccountId is { } aid
+                ? await db.CashAccounts.FirstOrDefaultAsync(c => c.Id == aid && c.UserId == userId, ct)
+                : null;
+
+            var applied = 0;
+            var label = $"{period.StartDate:M/d}–{period.EndDate:M/d}";
+            if (account is not null && (balance < 0 || (balance > 0 && profile.SurplusToAccount)))
+            {
+                applied = balance;
+                account.Balance += balance;
+                account.UpdatedAt = clock.UtcNow;
+                db.AssetAdjustments.Add(new AssetAdjustment
+                {
+                    UserId = userId,
+                    CashAccountId = account.Id,
+                    Date = period.EndDate.AddDays(1),
+                    Amount = balance,
+                    Note = balance < 0 ? $"{label} 超支結算" : $"{label} 結餘存入",
+                    Source = "settlement",
+                    PeriodId = period.Id,
+                    CreatedAt = clock.UtcNow,
+                });
+            }
+
+            period.SettledAt = clock.UtcNow;
+            period.SettlementAmount = applied;
+            db.Notifications.Add(new Notification
+            {
+                UserId = userId,
+                Key = $"settlement:{period.Id}",
+                Kind = "settlement",
+                PeriodId = period.Id,
+                PopupOn = today,
+                Payload = JsonSerializer.Serialize(new SettlementPayload(label, balance, applied, account?.Name)),
+                CreatedAt = clock.UtcNow,
+            });
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     /// <summary>刪掉開始日期之前的週期（試用資料），連同回報一起。</summary>
@@ -107,6 +179,7 @@ public class PeriodService(
             .Include(p => p.FixedCharges)
             .Include(p => p.Entries)
             .Include(p => p.PoolTransfers)
+            .Include(p => p.IncomeAdjustments)
             .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.Id == periodId && p.UserId == userId, ct)
         ?? throw new NotFoundException("找不到這個週期。");

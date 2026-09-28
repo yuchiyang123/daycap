@@ -45,6 +45,22 @@ public class PeriodsController(IPeriodService periods, IEntryService entries) : 
     public Task<PeriodView> AddTransfer(int id, CreatePoolTransferRequest req, CancellationToken ct) =>
         entries.AddTransferAsync(User.GetUserId(), id, req, ct);
 
+    [HttpPost("{id:int}/income-adjustments")]
+    public Task<PeriodView> AddIncomeAdjustment(int id, CreateIncomeAdjustmentRequest req, CancellationToken ct) =>
+        entries.AddIncomeAdjustmentAsync(User.GetUserId(), id, req, ct);
+
+    [HttpDelete("{id:int}/income-adjustments/{adjustmentId:int}")]
+    public Task<PeriodView> DeleteIncomeAdjustment(int id, int adjustmentId, CancellationToken ct) =>
+        entries.DeleteIncomeAdjustmentAsync(User.GetUserId(), id, adjustmentId, ct);
+
+    [HttpPost("{id:int}/income-confirm")]
+    public Task<PeriodView> ConfirmIncome(int id, CancellationToken ct) =>
+        entries.ConfirmIncomeAsync(User.GetUserId(), id, ct);
+
+    [HttpPost("{id:int}/allocate")]
+    public Task<PeriodView> Allocate(int id, AllocateRequest req, CancellationToken ct) =>
+        entries.AllocateAsync(User.GetUserId(), id, req, ct);
+
     [HttpDelete("{id:int}/transfers/{transferId:int}")]
     public Task<PeriodView> DeleteTransfer(int id, int transferId, CancellationToken ct) =>
         entries.DeleteTransferAsync(User.GetUserId(), id, transferId, ct);

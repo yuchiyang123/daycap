@@ -4,6 +4,8 @@ import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import LineChart, { type Series } from '../charts/LineChart.vue'
 import Meter from '../charts/Meter.vue'
 import { addTransfer, deleteTransfer } from '../api/endpoints'
+import IncomeSheet from '../components/IncomeSheet.vue'
+import AllocateSheet from '../components/AllocateSheet.vue'
 import { store, setPeriod } from '../lib/store'
 import { groupLabel, modeLabel, money, pct, shortDate, signed } from '../lib/format'
 
@@ -96,6 +98,8 @@ async function removeTransfer(id: number) {
 }
 
 const ledger = computed(() => [...period.value.pool.lines].reverse())
+const showIncome = ref(false)
+const showAllocate = ref(false)
 </script>
 
 <template>
@@ -103,7 +107,14 @@ const ledger = computed(() => [...period.value.pool.lines].reverse())
     <header class="page-head">
       <div>
         <h1>總覽</h1>
-        <p class="sub">{{ shortDate(period.startDate) }} – {{ shortDate(period.endDate) }}・月收入 {{ money(period.income) }}</p>
+        <p class="sub">
+          {{ shortDate(period.startDate) }} – {{ shortDate(period.endDate) }}・實領 {{ money(period.income) }}
+          <template v-if="period.income !== period.baseIncome">（預設 {{ money(period.baseIncome) }}）</template>
+        </p>
+      </div>
+      <div class="head-actions">
+        <button class="btn sm" @click="showIncome = true">本期薪資</button>
+        <button class="btn sm primary" :disabled="period.pool.balance <= 0" @click="showAllocate = true">分配剩餘</button>
       </div>
     </header>
 
@@ -134,6 +145,9 @@ const ledger = computed(() => [...period.value.pool.lines].reverse())
       <h2 class="section-title">收入怎麼分<span class="aside">本期快照</span></h2>
       <div class="panel panel-pad">
         <AllocationBar :segments="segments" :total="period.income" caption="收入分配" />
+        <p v-if="period.incomeAdjustments.length" class="muted small adj-note">
+          薪資調整：{{ period.incomeAdjustments.map((a) => `${a.label} ${signed(a.amount)}`).join('、') }}
+        </p>
       </div>
     </section>
 
@@ -220,10 +234,23 @@ const ledger = computed(() => [...period.value.pool.lines].reverse())
         </div>
       </section>
     </div>
+
+    <IncomeSheet v-if="showIncome" @close="showIncome = false" @allocate="showIncome = false; showAllocate = true" />
+    <AllocateSheet v-if="showAllocate" @close="showAllocate = false" />
   </div>
 </template>
 
 <style scoped>
+.head-actions {
+  display: flex;
+  gap: 8px;
+}
+.small {
+  font-size: 12px;
+}
+.adj-note {
+  margin-top: 10px;
+}
 .tile .label {
   font-size: 12px;
   color: var(--muted);

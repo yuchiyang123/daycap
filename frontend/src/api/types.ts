@@ -3,6 +3,14 @@ export type BudgetMode = 'Fixed' | 'Daily' | 'Envelope'
 export type BillingCycle = 'Monthly' | 'Quarterly' | 'Yearly'
 export type EntryInputMode = 'Actual' | 'Overage'
 export type GoalScope = 'All' | 'Cash' | 'Investments'
+export type IncomeAdjustmentKind =
+  | 'SickLeave'
+  | 'PersonalLeave'
+  | 'MenstrualLeave'
+  | 'Overtime'
+  | 'Bonus'
+  | 'OtherDeduction'
+  | 'OtherAddition'
 
 export interface Me {
   userId: string
@@ -43,6 +51,8 @@ export interface SettingsDto {
   monthlyIncome: number
   cycleStartDay: number
   startDate: string | null
+  settlementAccountId: number | null
+  surplusToAccount: boolean
   categories: CategoryDto[]
 }
 
@@ -70,7 +80,7 @@ export interface PeriodSummary {
 export interface PoolLine {
   date: string
   amount: number
-  kind: 'Opening' | 'Surplus' | 'Cover' | 'Unabsorbed' | 'EnvelopeOver' | 'Transfer'
+  kind: 'Opening' | 'Surplus' | 'Cover' | 'Unabsorbed' | 'EnvelopeOver' | 'Transfer' | 'Income' | 'Allocate'
   label: string
   entryId: number | null
   transferId: number | null
@@ -86,6 +96,8 @@ export interface CategoryView {
   spent: number
   plannedRemaining: number
   projected: number
+  /** 從待定區分配進來的額度（budget 已包含） */
+  allocated: number
 }
 
 export interface SlotView {
@@ -147,6 +159,17 @@ export interface PoolTransferView {
   date: string
   amount: number
   note: string
+  categoryId: number | null
+}
+
+export interface IncomeAdjustmentView {
+  id: number
+  kind: IncomeAdjustmentKind
+  days: number | null
+  hours: number | null
+  amount: number
+  note: string | null
+  label: string
 }
 
 export interface PeriodView {
@@ -154,7 +177,13 @@ export interface PeriodView {
   startDate: string
   endDate: string
   today: string
+  /** 實領 = 設定的月收入 + 本期薪資調整 */
   income: number
+  baseIncome: number
+  incomeAdjustments: IncomeAdjustmentView[]
+  incomeConfirmed: boolean
+  settledAt: string | null
+  settlementAmount: number | null
   pool: { opening: number; balance: number; lines: PoolLine[] }
   categories: CategoryView[]
   days: DayView[]
@@ -180,6 +209,35 @@ export interface EntryPreview {
   poolAfter: number
   categoryRemainingBefore: number
   categoryRemainingAfter: number
+}
+
+// ---- ledger / notifications ----
+export interface AssetAdjustmentView {
+  id: number
+  cashAccountId: number
+  accountName: string
+  date: string
+  amount: number
+  note: string
+  source: 'manual' | 'settlement'
+  periodId: number | null
+  createdAt: string
+}
+
+export interface NotificationDto {
+  id: number
+  kind: 'reminder' | 'settlement' | string
+  title: string
+  lines: string[]
+  tone: 'warn' | 'ok'
+  createdAt: string
+  read: boolean
+  showPopup: boolean
+}
+
+export interface NotificationsView {
+  unread: number
+  items: NotificationDto[]
 }
 
 // ---- assets ----

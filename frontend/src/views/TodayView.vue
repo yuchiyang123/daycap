@@ -5,6 +5,10 @@ import DayPanel from '../components/DayPanel.vue'
 import ReportSheet from '../components/ReportSheet.vue'
 import ExtraSheet from '../components/ExtraSheet.vue'
 import CategorySummary from '../components/CategorySummary.vue'
+import IncomeSheet from '../components/IncomeSheet.vue'
+import AllocateSheet from '../components/AllocateSheet.vue'
+import { confirmIncome } from '../api/endpoints'
+import { setPeriod } from '../lib/store'
 import type { SlotView } from '../api/types'
 import { store } from '../lib/store'
 import { dayLabel, money, signed } from '../lib/format'
@@ -20,6 +24,13 @@ const leftToday = computed(() => today.value.slots.filter((s) => s.actual === nu
 
 const reporting = ref<{ slot: SlotView; name: string } | null>(null)
 const addingExtra = ref(false)
+const showIncome = ref(false)
+const showAllocate = ref(false)
+
+async function confirmNoChange() {
+  setPeriod(await confirmIncome(period.value.id))
+  if (period.value.pool.balance > 0) showAllocate.value = true
+}
 </script>
 
 <template>
@@ -47,10 +58,26 @@ const addingExtra = ref(false)
           <span class="label">今日差額</span>
           <span class="side-v num" :class="today.net > 0 ? 'good' : today.net < 0 ? 'bad' : ''">{{ signed(today.net) }}</span>
         </div>
-        <RouterLink to="/overview" class="pool-link">
-          <span class="label">待定區</span>
-          <span class="side-v num" :class="period.pool.balance < 0 ? 'bad' : ''">{{ money(period.pool.balance) }}</span>
-        </RouterLink>
+        <div>
+          <RouterLink to="/overview" class="pool-link">
+            <span class="label">待定區</span>
+            <span class="side-v num" :class="period.pool.balance < 0 ? 'bad' : ''">{{ money(period.pool.balance) }}</span>
+          </RouterLink>
+          <button v-if="period.pool.balance > 0" type="button" class="btn quiet sm alloc" @click="showAllocate = true">分配剩餘</button>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="!period.incomeConfirmed" class="panel payday">
+      <div>
+        <b>確認本期薪資</b>
+        <p class="muted num">
+          設定的月收入 {{ money(period.baseIncome) }} 只是預設值。這期有請假（病假、事假）、加班或獎金嗎？調整後待定區會跟著變。
+        </p>
+      </div>
+      <div class="payday-actions">
+        <button type="button" class="btn" @click="showIncome = true">調整薪資</button>
+        <button type="button" class="btn primary" @click="confirmNoChange">沒有變動</button>
       </div>
     </section>
 
@@ -79,6 +106,8 @@ const addingExtra = ref(false)
       @close="reporting = null"
     />
     <ExtraSheet v-if="addingExtra" :date="today.date" @close="addingExtra = false" />
+    <IncomeSheet v-if="showIncome" @close="showIncome = false" @allocate="showIncome = false; showAllocate = true" />
+    <AllocateSheet v-if="showAllocate" @close="showAllocate = false" />
   </div>
 </template>
 
@@ -121,6 +150,27 @@ const addingExtra = ref(false)
 .pool-link {
   color: inherit;
   text-decoration: none;
+}
+.alloc {
+  margin-left: -8px;
+  color: var(--accent);
+}
+.payday {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-left: 3px solid var(--accent);
+}
+.payday p {
+  font-size: 13px;
+  margin-top: 2px;
+}
+.payday-actions {
+  display: flex;
+  gap: 8px;
 }
 .pool-link:hover .side-v {
   text-decoration: underline;

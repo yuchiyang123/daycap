@@ -17,11 +17,19 @@ public class BudgetPeriod
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? RebuiltAt { get; set; }
 
+    /// <summary>發薪日按過「確認本期薪資」（沒有變動也算）。</summary>
+    public DateTime? IncomeConfirmedAt { get; set; }
+
+    /// <summary>期末結算時間與實際動到資產的金額（負 = 超支扣掉，正 = 結餘存入，0 = 沒動）。</summary>
+    public DateTime? SettledAt { get; set; }
+    public int? SettlementAmount { get; set; }
+
     public List<PeriodCategory> Categories { get; set; } = [];
     public List<DayAllocation> Allocations { get; set; } = [];
     public List<PeriodFixedCharge> FixedCharges { get; set; } = [];
     public List<Entry> Entries { get; set; } = [];
     public List<PoolTransfer> PoolTransfers { get; set; } = [];
+    public List<IncomeAdjustment> IncomeAdjustments { get; set; } = [];
 }
 
 public class PeriodCategory
@@ -92,13 +100,35 @@ public class Entry
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>手動調整待定區（例如月底把結餘轉去儲蓄，或臨時補錢進來）。</summary>
+/// <summary>
+/// 手動調整待定區。CategoryId 為 null：錢進出待定區本身（例如轉去儲蓄、臨時補錢）；
+/// 有 CategoryId：把待定區的錢分配給那個分類（額度增加，每日類會加到之後每天的時段上）。
+/// </summary>
 public class PoolTransfer
 {
     public int Id { get; set; }
     public int PeriodId { get; set; }
     public DateOnly Date { get; set; }
+    public int? CategoryId { get; set; }
     public int Amount { get; set; }
     public string Note { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public enum IncomeAdjustmentKind { SickLeave, PersonalLeave, MenstrualLeave, Overtime, Bonus, OtherDeduction, OtherAddition }
+
+/// <summary>
+/// 發薪日時對這期薪資的加減：請假扣薪、加班費、獎金……。Amount 已帶正負號（扣薪為負）。
+/// 天數 / 時數只是紀錄怎麼算出來的，實際以 Amount 為準（使用者可以手改）。
+/// </summary>
+public class IncomeAdjustment
+{
+    public int Id { get; set; }
+    public int PeriodId { get; set; }
+    public IncomeAdjustmentKind Kind { get; set; }
+    public decimal? Days { get; set; }
+    public decimal? Hours { get; set; }
+    public int Amount { get; set; }
+    public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

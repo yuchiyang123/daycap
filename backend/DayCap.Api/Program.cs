@@ -35,6 +35,7 @@ builder.Services.AddScoped<IPeriodService, PeriodService>();
 builder.Services.AddScoped<IEntryService, EntryService>();
 builder.Services.AddScoped<IQuoteService, QuoteService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 builder.Services.AddHttpClient(CalendarService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient(QuoteService.HttpClientName, c =>

@@ -45,4 +45,18 @@ public record GoalView(
 
 public record AssetSnapshotDto(DateOnly Date, int Cash, int Investments);
 
+public record AssetAdjustmentView(
+    int Id,
+    int CashAccountId,
+    string AccountName,
+    DateOnly Date,
+    int Amount,
+    string Note,
+    string Source,
+    int? PeriodId,
+    DateTime CreatedAt);
+
+/// <summary>Amount 帶正負號：正 = 存入 / 收入，負 = 支出。</summary>
+public record CreateAssetAdjustmentRequest(int CashAccountId, DateOnly Date, int Amount, string? Note);
+
 public record SaveAssetsRequest(List<CashAccountDto> CashAccounts, List<HoldingDto> Holdings, List<GoalDto> Goals);

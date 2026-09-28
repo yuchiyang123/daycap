@@ -19,6 +19,9 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<PeriodFixedCharge> PeriodFixedCharges => Set<PeriodFixedCharge>();
     public DbSet<Entry> Entries => Set<Entry>();
     public DbSet<PoolTransfer> PoolTransfers => Set<PoolTransfer>();
+    public DbSet<IncomeAdjustment> IncomeAdjustments => Set<IncomeAdjustment>();
+    public DbSet<AssetAdjustment> AssetAdjustments => Set<AssetAdjustment>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     public DbSet<CashAccount> CashAccounts => Set<CashAccount>();
     public DbSet<Holding> Holdings => Set<Holding>();
@@ -52,6 +55,25 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
             e.HasMany(x => x.FixedCharges).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.Entries).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.PoolTransfers).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.IncomeAdjustments).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<IncomeAdjustment>(e =>
+        {
+            e.Property(x => x.Days).HasPrecision(6, 2);
+            e.Property(x => x.Hours).HasPrecision(6, 2);
+            e.Property(x => x.Note).HasMaxLength(120);
+        });
+        b.Entity<AssetAdjustment>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Date });
+            e.Property(x => x.Note).HasMaxLength(120);
+            e.Property(x => x.Source).HasMaxLength(20);
+        });
+        b.Entity<Notification>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Key }).IsUnique();
+            e.Property(x => x.Key).HasMaxLength(80);
+            e.Property(x => x.Kind).HasMaxLength(40);
         });
         b.Entity<DayAllocation>().HasIndex(x => new { x.PeriodId, x.Date, x.SlotId }).IsUnique();
         b.Entity<Entry>(e =>

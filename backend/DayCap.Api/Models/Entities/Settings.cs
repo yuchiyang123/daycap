@@ -25,6 +25,11 @@ public class UserProfile
     /// </summary>
     public DateOnly? StartDate { get; set; }
 
+    /// <summary>期末結算用的存款帳戶：超支從這裡扣；勾了 SurplusToAccount 的話結餘存進這裡。</summary>
+    public int? SettlementAccountId { get; set; }
+
+    public bool SurplusToAccount { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

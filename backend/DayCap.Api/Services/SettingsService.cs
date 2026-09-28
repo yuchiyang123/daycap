@@ -30,6 +30,10 @@ public class SettingsService(DayCapDbContext db) : ISettingsService
         profile.MonthlyIncome = dto.MonthlyIncome;
         profile.CycleStartDay = dto.CycleStartDay;
         profile.StartDate = dto.StartDate;
+        if (dto.SettlementAccountId is { } accountId && !await db.CashAccounts.AnyAsync(c => c.Id == accountId && c.UserId == userId, ct))
+            throw new ValidationException("找不到選的結算帳戶。");
+        profile.SettlementAccountId = dto.SettlementAccountId;
+        profile.SurplusToAccount = dto.SurplusToAccount;
 
         var existing = await db.Categories
             .Include(c => c.Slots).Include(c => c.FixedItems)
@@ -174,6 +178,8 @@ public class SettingsService(DayCapDbContext db) : ISettingsService
         profile.MonthlyIncome,
         profile.CycleStartDay,
         profile.StartDate,
+        profile.SettlementAccountId,
+        profile.SurplusToAccount,
         categories.Select(c => new CategoryDto(
             c.Id, c.Name, c.Group, c.Mode, c.Percent,
             c.Slots.OrderBy(s => s.SortOrder).Select(s => new SlotDto(s.Id, s.Name, s.WorkdayAmount, s.HolidayAmount)).ToList(),

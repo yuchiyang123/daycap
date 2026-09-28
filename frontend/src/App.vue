@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { store, loadCurrentPeriod } from './lib/store'
+import { store, loadCurrentPeriod, loadNotifications } from './lib/store'
 import NotStarted from './components/NotStarted.vue'
+import NotificationBell from './components/NotificationBell.vue'
+import NotificationPopup from './components/NotificationPopup.vue'
 import { toIso } from './lib/format'
 
 const route = useRoute()
@@ -12,18 +14,20 @@ const needsPeriod = computed(() => !!route.meta.needsPeriod)
 const tabs = [
   { to: '/', label: '今天' },
   { to: '/month', label: '本期' },
+  { to: '/ledger', label: '記帳' },
   { to: '/overview', label: '總覽' },
   { to: '/assets', label: '資產' },
   { to: '/settings', label: '設定' },
 ]
 
 // PWA 常常整晚開著：回到前景時如果已經換日，重新抓本期資料。
-function onVisible() {
+async function onVisible() {
   if (document.visibilityState !== 'visible') return
   const today = toIso(new Date())
-  if (store.period && store.period.today !== today) loadCurrentPeriod(true)
+  if (store.period && store.period.today !== today) await loadCurrentPeriod(true)
   // 等開始日期的時候，到了那天回到 app 就自動開始
-  else if (store.notStarted && store.notStarted.startDate <= today) loadCurrentPeriod(true)
+  else if (store.notStarted && store.notStarted.startDate <= today) await loadCurrentPeriod(true)
+  if (store.me) loadNotifications()
 }
 onMounted(() => document.addEventListener('visibilitychange', onVisible))
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible))
@@ -35,9 +39,12 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
     <header class="topbar">
       <div class="topbar-in">
         <RouterLink to="/" class="brand">日額</RouterLink>
-        <nav class="top-nav" aria-label="主要">
-          <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="top-link">{{ t.label }}</RouterLink>
-        </nav>
+        <div class="top-right">
+          <nav class="top-nav" aria-label="主要">
+            <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="top-link">{{ t.label }}</RouterLink>
+          </nav>
+          <NotificationBell />
+        </div>
       </div>
     </header>
 
@@ -52,6 +59,8 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
       </div>
       <RouterView v-else :key="store.period?.id" />
     </main>
+
+    <NotificationPopup />
 
     <nav class="tabbar" aria-label="主要">
       <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="tab">{{ t.label }}</RouterLink>
@@ -84,9 +93,14 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
   color: var(--ink);
   text-decoration: none;
 }
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .top-nav {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
 .top-link {
   color: var(--ink-2);
@@ -124,7 +138,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
     bottom: 0;
     z-index: 30;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     background: var(--surface);
     border-top: 1px solid var(--line);
     padding-bottom: env(safe-area-inset-bottom, 0px);

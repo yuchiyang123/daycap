@@ -19,6 +19,7 @@ const period = computed(() => store.period!)
 const choices = computed(() => period.value.categories.filter((c) => c.mode !== 'Fixed'))
 const fixedTargets = computed(() => period.value.categories.filter((c) => c.mode === 'Fixed'))
 
+const date = ref(props.date)
 const categoryId = ref<number>(props.categoryId ?? choices.value.find((c) => c.mode === 'Envelope')?.categoryId ?? choices.value[0]?.categoryId ?? 0)
 const amount = ref('')
 const note = ref('')
@@ -42,7 +43,7 @@ const request = computed<CreateEntryRequest | null>(() => {
   const n = Number(amount.value)
   if (!amount.value.trim() || !Number.isFinite(n) || n < 0 || !category.value) return null
   return {
-    date: props.date,
+    date: date.value,
     categoryId: categoryId.value,
     slotId: null,
     inputMode: 'Actual',
@@ -79,8 +80,12 @@ async function submit() {
 </script>
 
 <template>
-  <Sheet title="額外花費" :subtitle="dayLabel(date)" @close="emit('close')">
+  <Sheet title="記一筆花費" :subtitle="'扣在分類額度上；' + dayLabel(date)" @close="emit('close')">
     <form class="form" @submit.prevent="submit">
+      <label class="field">
+        日期
+        <input v-model="date" type="date" class="input" :min="period.startDate" :max="period.endDate" required />
+      </label>
       <div class="row2">
         <label class="field">
           分類

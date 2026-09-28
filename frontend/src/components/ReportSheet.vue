@@ -88,7 +88,7 @@ async function clearReport() {
       <span>這餐額度</span>
       <span>
         <b>{{ money(slot.planned) }}</b>
-        <span v-if="slot.planned !== slot.basePlanned" class="muted">（原本 {{ money(slot.basePlanned) }}，前面超支攤過來）</span>
+        <span v-if="slot.planned !== slot.basePlanned" class="muted">（原本 {{ money(slot.basePlanned) }}，因超支攤提或分配而調整）</span>
       </span>
     </div>
 

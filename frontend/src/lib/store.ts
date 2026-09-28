@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import * as ep from '../api/endpoints'
 import { ApiError } from '../api/http'
-import type { Me, NotStartedDto, PeriodView } from '../api/types'
+import type { Me, NotificationsView, NotStartedDto, PeriodView } from '../api/types'
 
 /**
  * 全站共用狀態。資料量很小（單人、一個月），不需要 Pinia：
@@ -15,7 +15,17 @@ export const store = reactive({
   notStarted: null as NotStartedDto | null,
   periodError: null as string | null,
   loading: false,
+  notifications: { unread: 0, items: [] } as NotificationsView,
 })
+
+/** 鈴鐺通知。後端順便會判斷要不要產生發薪日前提醒、跑期末結算。 */
+export async function loadNotifications(): Promise<void> {
+  try {
+    store.notifications = await ep.getNotifications()
+  } catch {
+    /* 通知失敗不影響主要功能 */
+  }
+}
 
 export async function checkAuth(): Promise<boolean> {
   if (store.authChecked) return store.me !== null

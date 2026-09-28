@@ -56,8 +56,16 @@ public static class BudgetEngine
                     gap > 0 ? $"{c.Name}額度未排進日程的部分" : $"{c.Name}日程排超過額度", null, null));
             }
         }
+        foreach (var adj in period.IncomeAdjustments.OrderBy(a => a.CreatedAt).ThenBy(a => a.Id))
+        {
+            lines.Add(new PoolLine(period.StartDate, adj.Amount, "Income", $"薪資調整：{IncomeLabel(adj)}", null, null));
+        }
         var opening = lines.Sum(l => l.Amount);
         var pool = opening;
+
+        // 從待定區分配給分類的錢（「分配剩餘」），會加到該分類的額度上
+        var allocatedExtra = categories.ToDictionary(c => c.CategoryId, _ => 0);
+        var envelopeBudget = categories.Where(c => c.Mode == BudgetMode.Envelope).ToDictionary(c => c.CategoryId, c => c.Budget);
 
         // ---- 依序重播 ----
         var envelopeSpent = categories.Where(c => c.Mode == BudgetMode.Envelope).ToDictionary(c => c.CategoryId, _ => 0);
@@ -72,6 +80,30 @@ public static class BudgetEngine
         {
             if (ev.Transfer is { } t)
             {
+                if (t.CategoryId is { } tc && categoryById.TryGetValue(tc, out var target) && target.Mode != BudgetMode.Fixed)
+                {
+                    pool -= t.Amount;
+                    allocatedExtra[tc] += t.Amount;
+                    if (target.Mode == BudgetMode.Envelope)
+                    {
+                        envelopeBudget[tc] += t.Amount;
+                    }
+                    else
+                    {
+                        // 每日類：依比例加到之後每一個還沒回報的時段
+                        var cutoff = Max(t.Date, toLocalDate(t.CreatedAt));
+                        var targets = allocByKey.Values
+                            .Where(a => a.CategoryId == tc && a.Date > cutoff && !reportedKeys.Contains((a.Date, a.SlotId)))
+                            .OrderBy(a => a.Date).ThenBy(a => a.SortOrder).ThenBy(a => a.SlotId)
+                            .ToList();
+                        var shares = DistributeAll(t.Amount, targets.Select(a => Math.Max(1, effective[(a.Date, a.SlotId)])).ToList());
+                        for (var i = 0; i < targets.Count; i++) effective[(targets[i].Date, targets[i].SlotId)] += shares[i];
+                    }
+                    lines.Add(new PoolLine(t.Date, -t.Amount, "Allocate",
+                        string.IsNullOrWhiteSpace(t.Note) ? $"分配給{target.Name}" : t.Note, null, t.Id));
+                    continue;
+                }
+
                 pool += t.Amount;
                 lines.Add(new PoolLine(t.Date, t.Amount, "Transfer", string.IsNullOrWhiteSpace(t.Note) ? "手動調整" : t.Note, null, t.Id));
                 continue;
@@ -84,7 +116,7 @@ public static class BudgetEngine
 
             var view = cat.Mode switch
             {
-                BudgetMode.Envelope => ApplyEnvelope(e, cat, envelopeSpent, ref pool, lines),
+                BudgetMode.Envelope => ApplyEnvelope(e, cat, envelopeBudget[cat.CategoryId], envelopeSpent, ref pool, lines),
                 _ => ApplyDaily(e, cat, allocByKey, effective, reportedKeys, toLocalDate, ref pool, lines),
             };
             entryViews[e.Id] = view;
@@ -157,11 +189,21 @@ public static class BudgetEngine
                         .Sum(v => v.Actual);
                     break;
             }
-            return new CategoryView(c.CategoryId, c.Name, c.Group, c.Mode, c.Budget, scheduled, spent, plannedRemaining, spent + plannedRemaining);
+            return new CategoryView(c.CategoryId, c.Name, c.Group, c.Mode, c.Budget + allocatedExtra[c.CategoryId], scheduled, spent, plannedRemaining, spent + plannedRemaining, allocatedExtra[c.CategoryId]);
         }).ToList();
 
+        var incomeAdjustments = period.IncomeAdjustments.OrderBy(a => a.CreatedAt).ThenBy(a => a.Id)
+            .Select(a => new IncomeAdjustmentView(a.Id, a.Kind, a.Days, a.Hours, a.Amount, a.Note, IncomeLabel(a)))
+            .ToList();
+
         return new PeriodView(
-            period.Id, period.StartDate, period.EndDate, today, period.Income,
+            period.Id, period.StartDate, period.EndDate, today,
+            period.Income + incomeAdjustments.Sum(a => a.Amount),
+            period.Income,
+            incomeAdjustments,
+            period.IncomeConfirmedAt is not null,
+            period.SettledAt,
+            period.SettlementAmount,
             new PoolView(opening, pool, lines),
             categoryViews,
             dayViews,
@@ -169,13 +211,13 @@ public static class BudgetEngine
             period.FixedCharges.OrderBy(f => f.DueDate).ThenBy(f => f.Name)
                 .Select(f => new FixedChargeView(f.Id, f.CategoryId, f.Name, f.Amount, f.DueDate, f.IsSubscription)).ToList(),
             period.PoolTransfers.OrderByDescending(t => t.CreatedAt)
-                .Select(t => new PoolTransferView(t.Id, t.Date, t.Amount, t.Note)).ToList());
+                .Select(t => new PoolTransferView(t.Id, t.Date, t.Amount, t.Note, t.CategoryId)).ToList());
     }
 
-    private static EntryView ApplyEnvelope(Entry e, PeriodCategory cat, Dictionary<int, int> envelopeSpent, ref int pool, List<PoolLine> lines)
+    private static EntryView ApplyEnvelope(Entry e, PeriodCategory cat, int budget, Dictionary<int, int> envelopeSpent, ref int pool, List<PoolLine> lines)
     {
         var actual = Math.Max(0, e.InputAmount);
-        var remaining = cat.Budget - envelopeSpent[cat.CategoryId];
+        var remaining = budget - envelopeSpent[cat.CategoryId];
         envelopeSpent[cat.CategoryId] += actual;
         var over = actual - Math.Max(remaining, 0);
         var envelopeOver = 0;
@@ -293,6 +335,45 @@ public static class BudgetEngine
             result[index]++;
         }
         return result;
+    }
+
+    /// <summary>把 amount 全部依 weights 等比例拆成整數（不設上限，用在「加」額度）。</summary>
+    public static List<int> DistributeAll(int amount, IReadOnlyList<int> weights)
+    {
+        var result = new List<int>(new int[weights.Count]);
+        long total = weights.Sum(w => (long)w);
+        if (amount <= 0 || total <= 0) return result;
+
+        var assigned = 0;
+        var remainders = new List<(int Index, long Rem)>();
+        for (var i = 0; i < weights.Count; i++)
+        {
+            var num = (long)amount * weights[i];
+            result[i] = (int)(num / total);
+            assigned += result[i];
+            remainders.Add((i, num % total));
+        }
+        foreach (var (index, _) in remainders.OrderByDescending(r => r.Rem).ThenBy(r => r.Index).Take(amount - assigned))
+        {
+            result[index]++;
+        }
+        return result;
+    }
+
+    public static string IncomeLabel(IncomeAdjustment a)
+    {
+        var qty = a.Days is > 0 ? $" {a.Days:0.##} 天" : a.Hours is > 0 ? $" {a.Hours:0.##} 小時" : "";
+        var name = a.Kind switch
+        {
+            IncomeAdjustmentKind.SickLeave => "病假",
+            IncomeAdjustmentKind.PersonalLeave => "事假",
+            IncomeAdjustmentKind.MenstrualLeave => "生理假",
+            IncomeAdjustmentKind.Overtime => "加班費",
+            IncomeAdjustmentKind.Bonus => "獎金",
+            IncomeAdjustmentKind.OtherDeduction => "其他扣款",
+            _ => "其他加給",
+        };
+        return string.IsNullOrWhiteSpace(a.Note) ? name + qty : $"{name}{qty}（{a.Note}）";
     }
 
     private static DateOnly Max(DateOnly a, DateOnly b) => a > b ? a : b;

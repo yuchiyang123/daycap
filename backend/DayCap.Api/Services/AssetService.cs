@@ -10,6 +10,9 @@ public interface IAssetService
 {
     Task<AssetsView> GetAsync(string userId, bool refreshQuotes, CancellationToken ct = default);
     Task<AssetsView> SaveAsync(string userId, SaveAssetsRequest req, CancellationToken ct = default);
+    Task<List<AssetAdjustmentView>> ListAdjustmentsAsync(string userId, DateOnly? from, DateOnly? to, CancellationToken ct = default);
+    Task<AssetAdjustmentView> AddAdjustmentAsync(string userId, CreateAssetAdjustmentRequest req, CancellationToken ct = default);
+    Task DeleteAdjustmentAsync(string userId, int adjustmentId, CancellationToken ct = default);
 }
 
 public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock clock) : IAssetService
@@ -103,6 +106,58 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
         await db.SaveChangesAsync(ct);
         return await GetAsync(userId, false, ct);
     }
+
+    public async Task<List<AssetAdjustmentView>> ListAdjustmentsAsync(string userId, DateOnly? from, DateOnly? to, CancellationToken ct = default)
+    {
+        var q = db.AssetAdjustments.Where(a => a.UserId == userId);
+        if (from is { } f) q = q.Where(a => a.Date >= f);
+        if (to is { } t) q = q.Where(a => a.Date <= t);
+        var rows = await q.OrderByDescending(a => a.Date).ThenByDescending(a => a.Id).Take(500).ToListAsync(ct);
+        var names = await db.CashAccounts.Where(c => c.UserId == userId).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
+        return rows.Select(a => ToView(a, names)).ToList();
+    }
+
+    public async Task<AssetAdjustmentView> AddAdjustmentAsync(string userId, CreateAssetAdjustmentRequest req, CancellationToken ct = default)
+    {
+        if (req.Amount == 0 || Math.Abs((long)req.Amount) > 100_000_000) throw new ValidationException("金額不正確。");
+        var account = await db.CashAccounts.FirstOrDefaultAsync(c => c.Id == req.CashAccountId && c.UserId == userId, ct)
+                      ?? throw new ValidationException("找不到這個存款帳戶，先到資產頁新增一個。");
+        var note = (req.Note ?? "").Trim();
+        var adj = new AssetAdjustment
+        {
+            UserId = userId,
+            CashAccountId = account.Id,
+            Date = req.Date,
+            Amount = req.Amount,
+            Note = note[..Math.Min(note.Length, 120)],
+            Source = "manual",
+            CreatedAt = clock.UtcNow,
+        };
+        db.AssetAdjustments.Add(adj);
+        account.Balance += req.Amount;
+        account.UpdatedAt = clock.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return ToView(adj, new Dictionary<int, string> { [account.Id] = account.Name });
+    }
+
+    /// <summary>刪除時把金額從帳戶餘額反向還原（帳戶已刪除就只刪紀錄）。</summary>
+    public async Task DeleteAdjustmentAsync(string userId, int adjustmentId, CancellationToken ct = default)
+    {
+        var adj = await db.AssetAdjustments.FirstOrDefaultAsync(a => a.Id == adjustmentId && a.UserId == userId, ct)
+                  ?? throw new NotFoundException("找不到這筆紀錄。");
+        var account = await db.CashAccounts.FirstOrDefaultAsync(c => c.Id == adj.CashAccountId && c.UserId == userId, ct);
+        if (account is not null)
+        {
+            account.Balance -= adj.Amount;
+            account.UpdatedAt = clock.UtcNow;
+        }
+        db.AssetAdjustments.Remove(adj);
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static AssetAdjustmentView ToView(AssetAdjustment a, IReadOnlyDictionary<int, string> names) =>
+        new(a.Id, a.CashAccountId, names.TryGetValue(a.CashAccountId, out var n) ? n : "（已刪除的帳戶）",
+            a.Date, a.Amount, a.Note, a.Source, a.PeriodId, a.CreatedAt);
 
     private async Task RecordSnapshotAsync(string userId, int cash, int investments, CancellationToken ct)
     {

@@ -1,6 +1,9 @@
 import { api, ensureCsrf, readCookie } from './http'
 import type {
+  AssetAdjustmentView,
   AssetsView,
+  IncomeAdjustmentKind,
+  NotificationsView,
   CalendarDayDto,
   CashAccountDto,
   CreateEntryRequest,
@@ -52,6 +55,27 @@ export const previewEntry = (periodId: number, req: CreateEntryRequest) =>
   api<EntryPreview>(`/api/periods/${periodId}/entries/preview`, { method: 'POST', body: req })
 export const deleteEntry = (periodId: number, entryId: number) =>
   api<PeriodView>(`/api/periods/${periodId}/entries/${entryId}`, { method: 'DELETE' })
+
+export const addIncomeAdjustment = (
+  periodId: number,
+  body: { kind: IncomeAdjustmentKind; days: number | null; hours: number | null; amount: number; note: string | null },
+) => api<PeriodView>(`/api/periods/${periodId}/income-adjustments`, { method: 'POST', body })
+export const deleteIncomeAdjustment = (periodId: number, id: number) =>
+  api<PeriodView>(`/api/periods/${periodId}/income-adjustments/${id}`, { method: 'DELETE' })
+export const confirmIncome = (periodId: number) =>
+  api<PeriodView>(`/api/periods/${periodId}/income-confirm`, { method: 'POST' })
+export const allocatePool = (periodId: number, body: { mode: 'single' | 'proportional'; categoryId: number | null; amount: number }) =>
+  api<PeriodView>(`/api/periods/${periodId}/allocate`, { method: 'POST', body })
+
+export const listAssetAdjustments = (from?: string, to?: string) =>
+  api<AssetAdjustmentView[]>(`/api/assets/adjustments${from ? `?from=${from}&to=${to}` : ''}`)
+export const addAssetAdjustment = (body: { cashAccountId: number; date: string; amount: number; note: string | null }) =>
+  api<AssetAdjustmentView>('/api/assets/adjustments', { method: 'POST', body })
+export const deleteAssetAdjustment = (id: number) => api<void>(`/api/assets/adjustments/${id}`, { method: 'DELETE' })
+
+export const getNotifications = () => api<NotificationsView>('/api/notifications')
+export const markPopupShown = (id: number) => api<void>(`/api/notifications/${id}/popup-shown`, { method: 'POST' })
+export const readAllNotifications = () => api<void>('/api/notifications/read-all', { method: 'POST' })
 
 export const addTransfer = (periodId: number, date: string, amount: number, note: string) =>
   api<PeriodView>(`/api/periods/${periodId}/transfers`, { method: 'POST', body: { date, amount, note } })
