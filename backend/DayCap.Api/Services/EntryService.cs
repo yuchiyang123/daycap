@@ -148,7 +148,7 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, IAppClock 
             DueDay = sub.DueDay ?? req.Date.Day,
             IsSubscription = true,
             Cycle = sub.Cycle,
-            BillingMonth = sub.Cycle == BillingCycle.Yearly ? req.Date.Month : null,
+            BillingMonth = sub.Cycle == BillingCycle.Monthly ? null : req.Date.Month,
             IsActive = true,
             ActiveFrom = period.EndDate.AddDays(1),
         });

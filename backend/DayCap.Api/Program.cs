@@ -10,6 +10,14 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
+// 備份模式：dotnet DayCap.Api.dll backup <目標檔>，做完就結束，不啟動網站。
+if (args is ["backup", var backupTarget])
+{
+    var path = Environment.GetEnvironmentVariable("Database__Path");
+    if (string.IsNullOrWhiteSpace(path)) path = Path.Combine(AppContext.BaseDirectory, "App_Data", "daycap.db");
+    return SqliteBackup.Run(path, backupTarget);
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers()
@@ -112,5 +120,6 @@ app.MapControllers();
 app.MapHealthChecks("/healthz");
 
 app.Run();
+return 0;
 
 public partial class Program { }

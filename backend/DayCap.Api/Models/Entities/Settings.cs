@@ -9,7 +9,7 @@ public enum CategoryGroup { Food, Clothing, Housing, Transport, Education, Leisu
 /// </summary>
 public enum BudgetMode { Fixed, Daily, Envelope }
 
-public enum BillingCycle { Monthly, Yearly }
+public enum BillingCycle { Monthly, Yearly, Quarterly }
 
 public class UserProfile
 {
@@ -18,6 +18,12 @@ public class UserProfile
 
     /// <summary>週期起始日（發薪日），1–28。週期 = 這天到下個月同一天的前一天。</summary>
     public int CycleStartDay { get; set; } = 1;
+
+    /// <summary>
+    /// 從哪天開始算（例如拿到第一份薪水那天）。這天之前完全不排額度、不開週期；
+    /// 第一期從這天開始，到下一個週期起始日的前一天（可能不滿一個月）。null = 馬上開始。
+    /// </summary>
+    public DateOnly? StartDate { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -65,7 +71,7 @@ public class FixedItem
     public bool IsSubscription { get; set; }
     public BillingCycle Cycle { get; set; } = BillingCycle.Monthly;
 
-    /// <summary>年繳項目在哪個月份扣款（1–12）；月繳時忽略。</summary>
+    /// <summary>年繳：扣款月份；季繳：第一個扣款月份（之後每 3 個月一次）。月繳時忽略。</summary>
     public int? BillingMonth { get; set; }
 
     public bool IsActive { get; set; } = true;

@@ -1,8 +1,11 @@
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** ProblemDetails 原文（例如 409 還沒開始時帶的 notStarted）。 */
+  body: Record<string, unknown> | null
+  constructor(status: number, message: string, body: Record<string, unknown> | null = null) {
     super(message)
     this.status = status
+    this.body = body
   }
 }
 
@@ -83,13 +86,14 @@ export async function api<T>(url: string, opts: RequestOptions = {}): Promise<T>
 
   if (!res.ok) {
     let message = `發生錯誤（${res.status}）`
+    let body: Record<string, unknown> | null = null
     try {
-      const problem = await res.json()
-      message = problem.detail || problem.title || message
+      body = await res.json()
+      message = (body?.detail as string) || (body?.title as string) || message
     } catch {
       /* 不是 JSON */
     }
-    throw new ApiError(res.status, message)
+    throw new ApiError(res.status, message, body)
   }
 
   if (res.status === 204) return undefined as T

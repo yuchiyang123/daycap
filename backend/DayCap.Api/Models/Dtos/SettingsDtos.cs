@@ -2,7 +2,7 @@ using DayCap.Api.Models.Entities;
 
 namespace DayCap.Api.Models.Dtos;
 
-public record SettingsDto(int MonthlyIncome, int CycleStartDay, List<CategoryDto> Categories);
+public record SettingsDto(int MonthlyIncome, int CycleStartDay, DateOnly? StartDate, List<CategoryDto> Categories);
 
 public record CategoryDto(
     int Id,

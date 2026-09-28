@@ -149,9 +149,90 @@ public sealed class PeriodServiceTests : IDisposable
 
     private sealed class FakeClock(DateOnly today) : IAppClock
     {
-        public DateTime UtcNow => today.ToDateTime(new TimeOnly(4, 0), DateTimeKind.Utc);
-        public DateOnly Today => today;
+        public DateOnly Current { get; set; } = today;
+        public DateTime UtcNow => Current.ToDateTime(new TimeOnly(4, 0), DateTimeKind.Utc);
+        public DateOnly Today => Current;
         public DateOnly ToLocalDate(DateTime utc) => DateOnly.FromDateTime(utc.AddHours(8));
+    }
+
+    private async Task UpdateSettings(Func<SettingsDto, SettingsDto> change) =>
+        await _settings.SaveAsync("u", change(await _settings.GetAsync("u")));
+
+    [Fact]
+    public async Task Before_the_start_date_nothing_is_calculated()
+    {
+        await UpdateSettings(s => s with { StartDate = new DateOnly(2026, 10, 15) });
+
+        var ex = await Assert.ThrowsAsync<Common.NotStartedException>(() => _periods.GetCurrentAsync("u"));
+
+        Assert.Equal(new DateOnly(2026, 10, 15), ex.Info.FirstPeriodStart);
+        Assert.Equal(new DateOnly(2026, 10, 31), ex.Info.FirstPeriodEnd);
+        Assert.Equal(8, ex.Info.DaysUntilStart);
+        Assert.Equal(0, await _db.Periods.CountAsync());
+    }
+
+    [Fact]
+    public async Task First_period_starts_on_the_start_date_and_ignores_trial_periods()
+    {
+        var trial = await _periods.GetCurrentAsync("u"); // 試用時產生的 10/1–10/31
+        await UpdateSettings(s => s with { StartDate = new DateOnly(2026, 10, 5) });
+
+        var view = await _periods.GetCurrentAsync("u");
+
+        Assert.NotEqual(trial.Id, view.Id);
+        Assert.Equal(new DateOnly(2026, 10, 5), view.StartDate);
+        Assert.Equal(new DateOnly(2026, 10, 31), view.EndDate);
+        Assert.Equal(27, view.Days.Count);
+
+        Assert.Equal(1, await _periods.DeleteBeforeStartAsync("u"));
+        Assert.Equal(view.Id, (await _periods.GetCurrentAsync("u")).Id);
+    }
+
+    [Fact]
+    public async Task Quarterly_items_are_charged_every_third_month_from_the_first_billing_month()
+    {
+        await UpdateSettings(s => s with
+        {
+            Categories = s.Categories.Select(c => c.Name != "固定帳單" ? c : c with
+            {
+                FixedItems = [.. c.FixedItems, new FixedItemDto(0, "保險季繳", 3000, 20, false, BillingCycle.Quarterly, 1, true, null)]
+            }).ToList()
+        });
+
+        var october = await _periods.GetCurrentAsync("u");
+        Assert.Contains(october.FixedCharges, f => f.Name == "保險季繳" && f.DueDate == new DateOnly(2026, 10, 20));
+
+        _clock.Current = new DateOnly(2026, 11, 3);
+        var november = await _periods.GetCurrentAsync("u");
+        Assert.DoesNotContain(november.FixedCharges, f => f.Name == "保險季繳");
+    }
+
+    [Fact]
+    public void Backup_writes_a_consistent_copy()
+    {
+        var dir = Directory.CreateTempSubdirectory("daycap-backup-");
+        try
+        {
+            var src = Path.Combine(dir.FullName, "src.db");
+            using (var db = new DayCapDbContext(new DbContextOptionsBuilder<DayCapDbContext>().UseSqlite($"Data Source={src}").Options))
+            {
+                db.Database.Migrate();
+                db.Profiles.Add(new UserProfile { UserId = "x", MonthlyIncome = 123 });
+                db.SaveChanges();
+            }
+            SqliteConnection.ClearAllPools();
+
+            var target = Path.Combine(dir.FullName, "out.db");
+            Assert.Equal(0, SqliteBackup.Run(src, target));
+
+            using var copy = new DayCapDbContext(new DbContextOptionsBuilder<DayCapDbContext>().UseSqlite($"Data Source={target}").Options);
+            Assert.Equal(123, copy.Profiles.Single().MonthlyIncome);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            dir.Delete(true);
+        }
     }
 
     private sealed class FakeCalendar : ICalendarService

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
-import { getCalendar, getSettings, rebuildPeriod, saveSettings, setDayOverride, logout } from '../api/endpoints'
+import { deleteBeforeStart, getCalendar, getSettings, rebuildPeriod, saveSettings, setDayOverride, logout } from '../api/endpoints'
 import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, SettingsDto } from '../api/types'
 import { store, setPeriod, loadCurrentPeriod } from '../lib/store'
-import { groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
+import { dayLabel, groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
 import { applyTheme, currentTheme, type ThemeChoice } from '../lib/theme'
 
 const draft = ref<SettingsDto | null>(null)
@@ -18,6 +18,7 @@ const rebuilding = ref(false)
 onMounted(async () => {
   try {
     draft.value = await getSettings()
+    savedStart.value = draft.value.startDate
     await loadCalendar()
   } catch (e) {
     error.value = (e as Error).message
@@ -33,7 +34,8 @@ function touch() {
 const income = computed(() => Number(draft.value?.monthlyIncome) || 0)
 function fixedMonthly(c: CategoryDto): number {
   // 年繳項目換算成每月平均，只用來看比例；實際扣款在年繳月份那期。
-  return c.fixedItems.filter((f) => f.isActive).reduce((a, f) => a + (f.cycle === 'Yearly' ? Math.round((Number(f.amount) || 0) / 12) : Number(f.amount) || 0), 0)
+  const perMonth = { Monthly: 1, Quarterly: 3, Yearly: 12 } as const
+  return c.fixedItems.filter((f) => f.isActive).reduce((a, f) => a + Math.round((Number(f.amount) || 0) / perMonth[f.cycle]), 0)
 }
 function amountOf(c: CategoryDto): number {
   return c.mode === 'Fixed' ? fixedMonthly(c) : Math.round((income.value * (Number(c.percent) || 0)) / 100)
@@ -55,12 +57,12 @@ const segments = computed<Segment[]>(() => {
   return segs
 })
 
-// ---- 每日額度估算：用本期實際的上班日 / 假日天數 ----
+// ---- 每日額度估算：用本期（或還沒開始時的第一期）實際的上班日 / 假日天數 ----
 const dayCounts = computed(() => {
-  const days = store.period?.days ?? []
-  const hol = days.filter((d) => d.isHoliday).length
-  return { work: days.length - hol, hol }
+  const hol = calendar.value.filter((d) => d.isHoliday).length
+  return { work: calendar.value.length - hol, hol }
 })
+const periodWord = computed(() => (store.period ? '本期' : '第一期'))
 function dailyEstimate(c: CategoryDto): number {
   const w = c.slots.reduce((a, s) => a + (Number(s.workdayAmount) || 0), 0)
   const h = c.slots.reduce((a, s) => a + (Number(s.holidayAmount) || 0), 0)
@@ -107,9 +109,11 @@ async function save() {
   saving.value = true
   error.value = null
   try {
+    const startChanged = (draft.value.startDate || null) !== (savedStart.value || null)
     const clean: SettingsDto = {
       monthlyIncome: Math.round(Number(draft.value.monthlyIncome) || 0),
       cycleStartDay: Math.round(Number(draft.value.cycleStartDay) || 1),
+      startDate: draft.value.startDate || null,
       categories: draft.value.categories.map((c) => ({
         ...c,
         percent: Number(c.percent) || 0,
@@ -118,14 +122,21 @@ async function save() {
           ...f,
           amount: Math.round(Number(f.amount) || 0),
           dueDay: f.dueDay === null || (f.dueDay as unknown) === '' ? null : Math.round(Number(f.dueDay)),
-          billingMonth: f.cycle === 'Yearly' ? Math.round(Number(f.billingMonth) || 1) : null,
+          billingMonth: f.cycle === 'Monthly' ? null : Math.round(Number(f.billingMonth) || 1),
         })),
       })),
     }
     draft.value = await saveSettings(clean)
+    savedStart.value = draft.value.startDate
     dirty.value = false
     saved.value = true
-    needsRebuild.value = true
+    if (startChanged) {
+      // 開始日期變了：重新判斷現在是「還沒開始」還是要開第一期（新的一期直接用新設定，不用重建）
+      await loadCurrentPeriod(true)
+      await loadCalendar()
+    } else {
+      needsRebuild.value = !!store.period
+    }
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -134,7 +145,6 @@ async function save() {
 }
 
 async function rebuild() {
-  if (!store.period) await loadCurrentPeriod()
   if (!store.period) return
   rebuilding.value = true
   try {
@@ -150,9 +160,32 @@ async function rebuild() {
 // ---- 假日覆寫 ----
 const calendar = ref<CalendarDayDto[]>([])
 async function loadCalendar() {
-  const p = store.period
-  if (!p) return
-  calendar.value = await getCalendar(p.startDate, p.endDate)
+  const range = store.period
+    ? [store.period.startDate, store.period.endDate]
+    : store.notStarted
+      ? [store.notStarted.firstPeriodStart, store.notStarted.firstPeriodEnd]
+      : null
+  calendar.value = range ? await getCalendar(range[0], range[1]) : []
+}
+
+// ---- 開始日期 ----
+const savedStart = ref<string | null>(null)
+const clearing = ref(false)
+const clearMsg = ref<string | null>(null)
+async function clearTrial() {
+  if (!clearing.value) {
+    clearing.value = true
+    setTimeout(() => (clearing.value = false), 4000)
+    return
+  }
+  const { deleted } = await deleteBeforeStart()
+  clearing.value = false
+  clearMsg.value = deleted ? `已清除 ${deleted} 期試用資料` : '沒有開始日期之前的資料'
+}
+
+/** 季繳：選第一個扣款月份，顯示成「1・4・7・10 月」。 */
+function quarterLabel(m: number): string {
+  return [0, 3, 6, 9].map((k) => ((m - 1 + k) % 12) + 1).join('・') + ' 月'
 }
 const calCells = computed(() => {
   if (!calendar.value.length) return []
@@ -165,7 +198,7 @@ async function toggleDay(d: CalendarDayDto) {
   const next = custom === null ? true : custom === 'hol' ? false : null
   await setDayOverride(d.date, next)
   await loadCalendar()
-  needsRebuild.value = true
+  needsRebuild.value = !!store.period
 }
 
 // ---- 外觀 / 帳號 ----
@@ -216,6 +249,25 @@ async function signOut() {
               <option v-for="d in 28" :key="d" :value="d">每月 {{ d }} 號</option>
             </select>
           </label>
+          <div class="field start-field">
+            <label for="start-date">開始日期（選填）</label>
+            <div class="start-row">
+              <input id="start-date" v-model="draft.startDate" type="date" class="input" @input="touch" />
+              <button v-if="draft.startDate" type="button" class="btn quiet sm" @click="draft.startDate = null; touch()">清除</button>
+            </div>
+          </div>
+          <p class="hint-line muted">
+            <template v-if="draft.startDate">
+              {{ dayLabel(draft.startDate) }} 之前完全不排額度、不計算；第一期從那天到下一個 {{ draft.cycleStartDay }} 號前一天。
+            </template>
+            <template v-else>還沒拿到薪水的話，填第一次發薪那天，在那之前 app 只顯示「還沒開始」。</template>
+          </p>
+          <div v-if="savedStart" class="trial">
+            <button type="button" class="btn sm danger" @click="clearTrial">
+              {{ clearing ? '再按一次確認清除' : '清除開始日期之前的試用資料' }}
+            </button>
+            <span v-if="clearMsg" class="muted small">{{ clearMsg }}</span>
+          </div>
         </div>
       </section>
 
@@ -257,7 +309,7 @@ async function signOut() {
             </label>
             <span class="num eq">= {{ money(amountOf(c)) }} / 月</span>
             <span v-if="c.mode === 'Daily'" class="num muted est">
-              本期日程 {{ money(dailyEstimate(c)) }}（上班 {{ dayCounts.work }} 天・假日 {{ dayCounts.hol }} 天）
+              {{ periodWord }}日程 {{ money(dailyEstimate(c)) }}（上班 {{ dayCounts.work }} 天・假日 {{ dayCounts.hol }} 天）
               <b :class="amountOf(c) - dailyEstimate(c) < 0 ? 'bad' : ''">
                 {{ amountOf(c) - dailyEstimate(c) >= 0 ? `多 ${money(amountOf(c) - dailyEstimate(c))} 進待定區` : `排超過 ${money(dailyEstimate(c) - amountOf(c))}` }}
               </b>
@@ -288,20 +340,25 @@ async function signOut() {
               <span>項目</span><span class="r">金額</span><span class="r">扣款日</span><span>週期</span><span>訂閱</span><span />
             </div>
             <div v-for="(f, fi) in c.fixedItems" :key="fi" class="fx-row">
-              <input v-model="f.name" class="input compact" placeholder="例如 房租" maxlength="60" aria-label="項目名稱" @input="touch" />
-              <input v-model.number="f.amount" class="input compact num" inputmode="numeric" aria-label="金額" @input="touch" />
-              <input v-model.number="f.dueDay" class="input compact num" inputmode="numeric" placeholder="日" aria-label="扣款日" @input="touch" />
-              <div class="cycle">
-                <select v-model="f.cycle" class="select compact" aria-label="週期" @change="touch">
+              <input v-model="f.name" class="input compact fx-name" placeholder="例如 房租" maxlength="60" aria-label="項目名稱" @input="touch" />
+              <input v-model.number="f.amount" class="input compact num fx-amt" inputmode="numeric" placeholder="金額" aria-label="金額" @input="touch" />
+              <input v-model.number="f.dueDay" class="input compact num fx-due" inputmode="numeric" placeholder="扣款日" aria-label="扣款日" @input="touch" />
+              <div class="cycle fx-cycle">
+                <select v-model="f.cycle" class="select compact" aria-label="週期" @change="f.billingMonth ??= 1; touch()">
                   <option value="Monthly">月繳</option>
+                  <option value="Quarterly">季繳</option>
                   <option value="Yearly">年繳</option>
                 </select>
                 <select v-if="f.cycle === 'Yearly'" v-model.number="f.billingMonth" class="select compact" aria-label="扣款月份" @change="touch">
                   <option v-for="m in 12" :key="m" :value="m">{{ m }} 月</option>
                 </select>
+                <select v-else-if="f.cycle === 'Quarterly'" v-model.number="f.billingMonth" class="select compact" aria-label="扣款月份" @change="touch">
+                  <option v-for="m in 3" :key="m" :value="m">{{ quarterLabel(m) }}</option>
+                  <option v-if="f.billingMonth && f.billingMonth > 3" :value="f.billingMonth">{{ quarterLabel(f.billingMonth) }}</option>
+                </select>
               </div>
-              <label class="check"><input v-model="f.isSubscription" type="checkbox" @change="touch" /><span class="sr">訂閱</span></label>
-              <button type="button" class="btn quiet sm danger" @click="c.fixedItems.splice(fi, 1); touch()">移除</button>
+              <label class="check fx-sub"><input v-model="f.isSubscription" type="checkbox" @change="touch" /><span class="sub-label">訂閱</span></label>
+              <button type="button" class="btn quiet sm danger fx-del" @click="c.fixedItems.splice(fi, 1); touch()">移除</button>
             </div>
             <p v-for="f in c.fixedItems.filter((x) => x.activeFrom)" :key="`af-${f.id}`" class="muted small">
               「{{ f.name }}」從 {{ shortDate(f.activeFrom!) }} 那期開始算
@@ -325,7 +382,7 @@ async function signOut() {
       </div>
 
       <section class="section">
-        <h2 class="section-title">本期假日<span class="aside">點一下切換：照行事曆 → 假日 → 上班日</span></h2>
+        <h2 class="section-title">{{ periodWord }}假日<span class="aside">點一下切換：照行事曆 → 假日 → 上班日</span></h2>
         <div class="panel cal">
           <div v-for="w in ['日', '一', '二', '三', '四', '五', '六']" :key="w" class="wd">{{ w }}</div>
           <template v-for="(d, i) in calCells" :key="i">
@@ -369,6 +426,27 @@ async function signOut() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+.start-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.hint-line {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  margin-top: -4px;
+}
+.trial {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sub-label {
+  display: none;
+  font-size: 13px;
 }
 .notice {
   position: sticky;
@@ -570,10 +648,39 @@ async function signOut() {
   .cat-head .order {
     grid-column: span 2;
   }
+  /* 手機：每個固定項目排成一張小卡，週期的兩個下拉各佔半寬，不再擠在同一欄 */
   .fx-row {
-    grid-template-columns: 1fr 90px;
-    padding-bottom: 8px;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      'name name'
+      'amt due'
+      'cycle cycle'
+      'sub del';
+    padding-bottom: 10px;
     border-bottom: 1px solid var(--line);
+  }
+  .fx-name {
+    grid-area: name;
+  }
+  .fx-amt {
+    grid-area: amt;
+  }
+  .fx-due {
+    grid-area: due;
+  }
+  .fx-cycle {
+    grid-area: cycle;
+  }
+  .fx-sub {
+    grid-area: sub;
+    align-items: center;
+  }
+  .fx-del {
+    grid-area: del;
+    justify-self: end;
+  }
+  .sub-label {
+    display: inline;
   }
   .fx-row.st-head {
     display: none;

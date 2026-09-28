@@ -17,6 +17,11 @@ public class PeriodsController(IPeriodService periods, IEntryService entries) : 
     [HttpGet("current")]
     public Task<PeriodView> Current(CancellationToken ct) => periods.GetCurrentAsync(User.GetUserId(), ct);
 
+    /// <summary>刪掉開始日期之前的試用週期。</summary>
+    [HttpDelete("before-start")]
+    public async Task<object> DeleteBeforeStart(CancellationToken ct) =>
+        new { deleted = await periods.DeleteBeforeStartAsync(User.GetUserId(), ct) };
+
     [HttpGet("{id:int}")]
     public Task<PeriodView> Get(int id, CancellationToken ct) => periods.GetAsync(User.GetUserId(), id, ct);
 

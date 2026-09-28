@@ -10,7 +10,8 @@ export const router = createRouter({
     { path: '/month', component: () => import('./views/MonthView.vue'), meta: { needsPeriod: true } },
     { path: '/overview', component: () => import('./views/OverviewView.vue'), meta: { needsPeriod: true } },
     { path: '/assets', component: () => import('./views/AssetsView.vue') },
-    { path: '/settings', component: () => import('./views/SettingsView.vue'), meta: { needsPeriod: true } },
+    // 設定頁沒有本期也要能用（還沒到開始日期時就是在這裡設定）
+    { path: '/settings', component: () => import('./views/SettingsView.vue'), meta: { wantsPeriod: true } },
     { path: '/:rest(.*)*', redirect: '/' },
   ],
 })
@@ -18,6 +19,6 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   if (to.meta.public) return true
   if (!(await checkAuth())) return { path: '/login', query: { redirect: to.fullPath } }
-  if (to.meta.needsPeriod) await loadCurrentPeriod()
+  if (to.meta.needsPeriod || to.meta.wantsPeriod) await loadCurrentPeriod()
   return true
 })

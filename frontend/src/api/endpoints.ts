@@ -41,6 +41,7 @@ export const setDayOverride = (date: string, isHoliday: boolean | null) =>
 
 export const listPeriods = () => api<PeriodSummary[]>('/api/periods')
 export const getCurrentPeriod = () => api<PeriodView>('/api/periods/current')
+export const deleteBeforeStart = () => api<{ deleted: number }>('/api/periods/before-start', { method: 'DELETE' })
 export const getPeriod = (id: number) => api<PeriodView>(`/api/periods/${id}`)
 export const rebuildPeriod = (id: number, fromDate: string | null) =>
   api<PeriodView>(`/api/periods/${id}/rebuild`, { method: 'POST', body: { fromDate } })

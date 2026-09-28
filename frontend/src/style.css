@@ -234,7 +234,7 @@ a {
 
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -529,4 +529,34 @@ table.tbl {
   .anim-w {
     transition: width 0.25s ease;
   }
+}
+
+/* ---------- 手機 / iOS 表單修正 ---------- */
+/* 原生下拉在 iOS 有自己的圓角與漸層外觀、寬度也不聽 grid：統一成平面樣式 + 一個小箭頭 */
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23898781' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  text-overflow: ellipsis;
+}
+/* iOS 的日期欄位有固定的最小寬度，會把格子撐破；內容預設置中也跟其他欄位不齊 */
+input[type='date'].input {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.3;
+}
+input[type='date'].input::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+input.input::-webkit-inner-spin-button,
+input.input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }

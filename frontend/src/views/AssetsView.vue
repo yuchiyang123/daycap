@@ -250,9 +250,9 @@ function addGoal() {
           <div v-for="(h, i) in holdings" :key="i" class="row hold-row">
             <input v-model="h.symbol" class="input compact" placeholder="0050" maxlength="16" aria-label="代號" />
             <input v-model="h.name" class="input compact" placeholder="自動帶入" maxlength="40" aria-label="名稱" />
-            <input v-model.number="h.shares" class="input compact num" inputmode="decimal" aria-label="股數" />
-            <input v-model.number="h.avgCost" class="input compact num" inputmode="decimal" aria-label="平均成本" />
-            <input v-model="h.manualPrice" class="input compact num" inputmode="decimal" placeholder="—" aria-label="手動價格" />
+            <input v-model.number="h.shares" class="input compact num" inputmode="decimal" placeholder="股數" aria-label="股數" />
+            <input v-model.number="h.avgCost" class="input compact num" inputmode="decimal" placeholder="平均成本" aria-label="平均成本" />
+            <input v-model="h.manualPrice" class="input compact num" inputmode="decimal" placeholder="手動價格（選填）" aria-label="手動價格" />
             <button type="button" class="btn quiet sm danger" @click="holdings.splice(i, 1)">移除</button>
           </div>
           <button type="button" class="btn sm" @click="holdings.push({ id: 0, symbol: '', name: '', shares: 0, avgCost: 0, manualPrice: null })">新增持股</button>
@@ -264,7 +264,7 @@ function addGoal() {
         <div class="panel panel-pad rows">
           <div v-for="(g, i) in goals" :key="i" class="row goal-row">
             <input v-model="g.name" class="input compact" placeholder="例如 緊急預備金 6 個月" maxlength="40" aria-label="目標名稱" />
-            <input v-model.number="g.targetAmount" class="input compact num" inputmode="numeric" aria-label="目標金額" />
+            <input v-model.number="g.targetAmount" class="input compact num" inputmode="numeric" placeholder="目標金額" aria-label="目標金額" />
             <input v-model="g.targetDate" type="date" class="input compact" aria-label="目標日期" />
             <select v-model="g.scope" class="select compact" aria-label="計算範圍">
               <option value="All">總資產</option>

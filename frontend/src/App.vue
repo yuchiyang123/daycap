@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { store, loadCurrentPeriod } from './lib/store'
+import NotStarted from './components/NotStarted.vue'
 import { toIso } from './lib/format'
 
 const route = useRoute()
@@ -18,8 +19,11 @@ const tabs = [
 
 // PWA 常常整晚開著：回到前景時如果已經換日，重新抓本期資料。
 function onVisible() {
-  if (document.visibilityState !== 'visible' || !store.period) return
-  if (store.period.today !== toIso(new Date())) loadCurrentPeriod(true)
+  if (document.visibilityState !== 'visible') return
+  const today = toIso(new Date())
+  if (store.period && store.period.today !== today) loadCurrentPeriod(true)
+  // 等開始日期的時候，到了那天回到 app 就自動開始
+  else if (store.notStarted && store.notStarted.startDate <= today) loadCurrentPeriod(true)
 }
 onMounted(() => document.addEventListener('visibilitychange', onVisible))
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible))
@@ -42,6 +46,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
         <p class="error-box">讀不到本期資料：{{ store.periodError }}</p>
         <button class="btn" @click="loadCurrentPeriod(true)">重試</button>
       </div>
+      <NotStarted v-else-if="needsPeriod && store.notStarted" :info="store.notStarted" />
       <div v-else-if="needsPeriod && !store.period" class="page">
         <p class="muted">載入中</p>
       </div>

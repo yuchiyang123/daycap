@@ -1,6 +1,6 @@
 export type CategoryGroup = 'Food' | 'Clothing' | 'Housing' | 'Transport' | 'Education' | 'Leisure' | 'Savings' | 'Other'
 export type BudgetMode = 'Fixed' | 'Daily' | 'Envelope'
-export type BillingCycle = 'Monthly' | 'Yearly'
+export type BillingCycle = 'Monthly' | 'Quarterly' | 'Yearly'
 export type EntryInputMode = 'Actual' | 'Overage'
 export type GoalScope = 'All' | 'Cash' | 'Investments'
 
@@ -42,6 +42,7 @@ export interface CategoryDto {
 export interface SettingsDto {
   monthlyIncome: number
   cycleStartDay: number
+  startDate: string | null
   categories: CategoryDto[]
 }
 
@@ -52,6 +53,13 @@ export interface CalendarDayDto {
 }
 
 // ---- period ----
+export interface NotStartedDto {
+  startDate: string
+  firstPeriodStart: string
+  firstPeriodEnd: string
+  daysUntilStart: number
+}
+
 export interface PeriodSummary {
   id: number
   startDate: string

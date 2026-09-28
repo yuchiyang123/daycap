@@ -14,6 +14,7 @@ public interface IPeriodService
     Task<PeriodView> RebuildAsync(string userId, int periodId, DateOnly? fromDate, CancellationToken ct = default);
     Task<BudgetPeriod> LoadAsync(string userId, int periodId, CancellationToken ct = default, bool tracking = true);
     Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default);
+    Task<int> DeleteBeforeStartAsync(string userId, CancellationToken ct = default);
 }
 
 public class PeriodService(
@@ -25,17 +26,28 @@ public class PeriodService(
     public async Task<PeriodView> GetCurrentAsync(string userId, CancellationToken ct = default)
     {
         var today = clock.Today;
+        var profile = await settings.EnsureProfileAsync(userId, ct);
+
+        // 還沒到開始日期：什麼都不算，告訴前端哪天開始、第一期是哪段。
+        if (profile.StartDate is { } startDate && startDate > today)
+        {
+            var (fs, fe) = FirstPeriodRange(startDate, profile.CycleStartDay);
+            throw new NotStartedException(new NotStartedDto(startDate, fs, fe, startDate.DayNumber - today.DayNumber));
+        }
+
+        // 開始日期之前留下的週期（試用時產生的）一律忽略。
+        var minStart = profile.StartDate ?? DateOnly.MinValue;
         var existing = await db.Periods
-            .Where(p => p.UserId == userId && p.StartDate <= today && p.EndDate >= today)
+            .Where(p => p.UserId == userId && p.StartDate >= minStart && p.StartDate <= today && p.EndDate >= today)
             .Select(p => (int?)p.Id)
             .FirstOrDefaultAsync(ct);
         if (existing is { } id) return await GetAsync(userId, id, ct);
 
-        var profile = await settings.EnsureProfileAsync(userId, ct);
         var (start, end) = CycleRange(today, profile.CycleStartDay);
+        if (start < minStart) start = minStart; // 第一期從開始日期算起，可能不滿一個月
 
         // 改過週期起始日時，新週期不能跟舊的重疊：從上一期結束的隔天開始。
-        var lastEnd = await db.Periods.Where(p => p.UserId == userId && p.EndDate >= start && p.StartDate <= today)
+        var lastEnd = await db.Periods.Where(p => p.UserId == userId && p.StartDate >= minStart && p.EndDate >= start && p.StartDate <= today)
             .MaxAsync(p => (DateOnly?)p.EndDate, ct);
         if (lastEnd is { } le && le >= start) start = le.AddDays(1);
 
@@ -44,6 +56,14 @@ public class PeriodService(
         await BuildAsync(period, profile, start, ct);
         await db.SaveChangesAsync(ct);
         return await ComputeAsync(period, ct);
+    }
+
+    /// <summary>刪掉開始日期之前的週期（試用資料），連同回報一起。</summary>
+    public async Task<int> DeleteBeforeStartAsync(string userId, CancellationToken ct = default)
+    {
+        var profile = await settings.EnsureProfileAsync(userId, ct);
+        if (profile.StartDate is not { } start) return 0;
+        return await db.Periods.Where(p => p.UserId == userId && p.StartDate < start).ExecuteDeleteAsync(ct);
     }
 
     public async Task<PeriodView> GetAsync(string userId, int periodId, CancellationToken ct = default) =>
@@ -147,10 +167,14 @@ public class PeriodService(
         foreach (var item in c.FixedItems.Where(f => f.IsActive && (f.ActiveFrom is null || f.ActiveFrom <= period.StartDate)))
         {
             DateOnly? due;
-            if (item.Cycle == BillingCycle.Yearly)
+            if (item.Cycle != BillingCycle.Monthly)
             {
-                due = FindDueDate(period, item.DueDay ?? 1, item.BillingMonth ?? 1);
-                if (due is null) continue; // 這期不是年繳的月份
+                var first = item.BillingMonth ?? 1;
+                int[] months = item.Cycle == BillingCycle.Quarterly
+                    ? [first, (first + 2) % 12 + 1, (first + 5) % 12 + 1, (first + 8) % 12 + 1]
+                    : [first];
+                due = FindDueDate(period, item.DueDay ?? 1, months);
+                if (due is null) continue; // 這期不是年繳 / 季繳的月份
             }
             else
             {
@@ -170,15 +194,22 @@ public class PeriodService(
     }
 
     /// <summary>在週期內找扣款日；日期超過當月天數時落在月底（例如 31 號在二月 = 28/29 號）。</summary>
-    private static DateOnly? FindDueDate(BudgetPeriod period, int dueDay, int? month)
+    private static DateOnly? FindDueDate(BudgetPeriod period, int dueDay, int[]? months)
     {
         for (var d = period.StartDate; d <= period.EndDate; d = d.AddDays(1))
         {
-            if (month is { } m && d.Month != m) continue;
+            if (months is not null && !months.Contains(d.Month)) continue;
             var target = Math.Min(dueDay, DateTime.DaysInMonth(d.Year, d.Month));
             if (d.Day == target) return d;
         }
         return null;
+    }
+
+    /// <summary>第一期：從開始日期到下一個週期起始日的前一天。</summary>
+    public static (DateOnly Start, DateOnly End) FirstPeriodRange(DateOnly startDate, int cycleStartDay)
+    {
+        var (_, end) = CycleRange(startDate, cycleStartDay);
+        return (startDate, end);
     }
 
     public static (DateOnly Start, DateOnly End) CycleRange(DateOnly date, int startDay)

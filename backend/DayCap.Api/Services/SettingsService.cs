@@ -29,6 +29,7 @@ public class SettingsService(DayCapDbContext db) : ISettingsService
         var profile = await EnsureProfileAsync(userId, ct);
         profile.MonthlyIncome = dto.MonthlyIncome;
         profile.CycleStartDay = dto.CycleStartDay;
+        profile.StartDate = dto.StartDate;
 
         var existing = await db.Categories
             .Include(c => c.Slots).Include(c => c.FixedItems)
@@ -135,7 +136,7 @@ public class SettingsService(DayCapDbContext db) : ISettingsService
             item.DueDay = f.DueDay;
             item.IsSubscription = f.IsSubscription;
             item.Cycle = f.Cycle;
-            item.BillingMonth = f.Cycle == BillingCycle.Yearly ? f.BillingMonth ?? 1 : null;
+            item.BillingMonth = f.Cycle == BillingCycle.Monthly ? null : f.BillingMonth ?? 1;
             item.IsActive = f.IsActive;
             item.ActiveFrom = f.ActiveFrom;
         }
@@ -172,6 +173,7 @@ public class SettingsService(DayCapDbContext db) : ISettingsService
     private static SettingsDto ToDto(UserProfile profile, List<Category> categories) => new(
         profile.MonthlyIncome,
         profile.CycleStartDay,
+        profile.StartDate,
         categories.Select(c => new CategoryDto(
             c.Id, c.Name, c.Group, c.Mode, c.Percent,
             c.Slots.OrderBy(s => s.SortOrder).Select(s => new SlotDto(s.Id, s.Name, s.WorkdayAmount, s.HolidayAmount)).ToList(),

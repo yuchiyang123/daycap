@@ -13,6 +13,7 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
         {
             NotFoundException => (StatusCodes.Status404NotFound, "Not Found"),
             ValidationException => (StatusCodes.Status400BadRequest, "Validation Failed"),
+            NotStartedException => (StatusCodes.Status409Conflict, "Not Started"),
             _ => (StatusCodes.Status500InternalServerError, "Internal Server Error")
         };
 
@@ -21,13 +22,16 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
             logger.LogError(exception, "Unhandled exception");
         }
 
-        httpContext.Response.StatusCode = statusCode;
-        await httpContext.Response.WriteAsJsonAsync(new ProblemDetails
+        var problem = new ProblemDetails
         {
             Status = statusCode,
             Title = title,
             Detail = statusCode == StatusCodes.Status500InternalServerError ? null : exception.Message
-        }, cancellationToken);
+        };
+        if (exception is NotStartedException ns) problem.Extensions["notStarted"] = ns.Info;
+
+        httpContext.Response.StatusCode = statusCode;
+        await httpContext.Response.WriteAsJsonAsync(problem, cancellationToken);
 
         return true;
     }

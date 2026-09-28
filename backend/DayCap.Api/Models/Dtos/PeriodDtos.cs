@@ -100,3 +100,6 @@ public record EntryPreview(EntryView Entry, int PoolBefore, int PoolAfter, int C
 public record CreatePoolTransferRequest(DateOnly Date, int Amount, string Note);
 
 public record RebuildRequest(DateOnly? FromDate);
+
+/// <summary>還沒到開始日期時，/api/periods/current 回 409 並帶這個內容。</summary>
+public record NotStartedDto(DateOnly StartDate, DateOnly FirstPeriodStart, DateOnly FirstPeriodEnd, int DaysUntilStart);

@@ -136,6 +136,7 @@ async function submit() {
             週期
             <select v-model="subCycle" class="select">
               <option value="Monthly">月繳</option>
+              <option value="Quarterly">季繳</option>
               <option value="Yearly">年繳</option>
             </select>
           </label>
