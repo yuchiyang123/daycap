@@ -1,0 +1,94 @@
+using DayCap.Api.Models.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+
+namespace DayCap.Api.Data;
+
+public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbContext(options)
+{
+    public DbSet<UserProfile> Profiles => Set<UserProfile>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<DailySlot> DailySlots => Set<DailySlot>();
+    public DbSet<FixedItem> FixedItems => Set<FixedItem>();
+    public DbSet<DayTypeOverride> DayTypeOverrides => Set<DayTypeOverride>();
+    public DbSet<CalendarDay> CalendarDays => Set<CalendarDay>();
+
+    public DbSet<BudgetPeriod> Periods => Set<BudgetPeriod>();
+    public DbSet<PeriodCategory> PeriodCategories => Set<PeriodCategory>();
+    public DbSet<DayAllocation> DayAllocations => Set<DayAllocation>();
+    public DbSet<PeriodFixedCharge> PeriodFixedCharges => Set<PeriodFixedCharge>();
+    public DbSet<Entry> Entries => Set<Entry>();
+    public DbSet<PoolTransfer> PoolTransfers => Set<PoolTransfer>();
+
+    public DbSet<CashAccount> CashAccounts => Set<CashAccount>();
+    public DbSet<Holding> Holdings => Set<Holding>();
+    public DbSet<Goal> Goals => Set<Goal>();
+    public DbSet<AssetSnapshot> AssetSnapshots => Set<AssetSnapshot>();
+    public DbSet<PriceQuote> PriceQuotes => Set<PriceQuote>();
+
+    protected override void OnModelCreating(ModelBuilder b)
+    {
+        b.Entity<UserProfile>().HasKey(x => x.UserId);
+
+        b.Entity<Category>(e =>
+        {
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.Name).HasMaxLength(40);
+            e.Property(x => x.Percent).HasPrecision(6, 2);
+            e.HasMany(x => x.Slots).WithOne().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.FixedItems).WithOne().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DailySlot>().Property(x => x.Name).HasMaxLength(40);
+        b.Entity<FixedItem>().Property(x => x.Name).HasMaxLength(60);
+
+        b.Entity<DayTypeOverride>().HasKey(x => new { x.UserId, x.Date });
+        b.Entity<CalendarDay>().HasKey(x => x.Date);
+
+        b.Entity<BudgetPeriod>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.StartDate }).IsUnique();
+            e.HasMany(x => x.Categories).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.FixedCharges).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Entries).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.PoolTransfers).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<DayAllocation>().HasIndex(x => new { x.PeriodId, x.Date, x.SlotId }).IsUnique();
+        b.Entity<Entry>(e =>
+        {
+            e.HasIndex(x => new { x.PeriodId, x.Date });
+            e.Property(x => x.Note).HasMaxLength(120);
+        });
+        b.Entity<PoolTransfer>().Property(x => x.Note).HasMaxLength(120);
+
+        b.Entity<CashAccount>().HasIndex(x => x.UserId);
+        b.Entity<Holding>(e =>
+        {
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.Symbol).HasMaxLength(16);
+            e.Property(x => x.Shares).HasPrecision(18, 4);
+            e.Property(x => x.AvgCost).HasPrecision(18, 4);
+            e.Property(x => x.ManualPrice).HasPrecision(18, 4);
+        });
+        b.Entity<Goal>().HasIndex(x => x.UserId);
+        b.Entity<AssetSnapshot>().HasIndex(x => new { x.UserId, x.Date }).IsUnique();
+        b.Entity<PriceQuote>(e =>
+        {
+            e.HasKey(x => x.Symbol);
+            e.Property(x => x.Price).HasPrecision(18, 4);
+        });
+
+        // SQLite 不存時區，讀回來的 DateTime 是 Unspecified，序列化成 JSON 就沒有 Z，
+        // 前端會當成本地時間。這裡寫入的一律是 UTC，讀回來時標回 UTC。
+        var utc = new ValueConverter<DateTime, DateTime>(v => v, v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
+        var utcNullable = new ValueConverter<DateTime?, DateTime?>(v => v, v => v.HasValue ? DateTime.SpecifyKind(v.Value, DateTimeKind.Utc) : v);
+        foreach (var entity in b.Model.GetEntityTypes())
+        {
+            foreach (var prop in entity.GetProperties())
+            {
+                if (prop.ClrType == typeof(DateTime)) prop.SetValueConverter(utc);
+                else if (prop.ClrType == typeof(DateTime?)) prop.SetValueConverter(utcNullable);
+            }
+        }
+    }
+}

@@ -34,7 +34,7 @@
 ## 本機開發
 
 ```bash
-# 後端（Development 預設開 DevAuth，不用跑 Mini-SSO 也能用；資料在 backend/DayCap.Api/data/）
+# 後端（Development 預設開 DevAuth，不用跑 Mini-SSO 也能用；資料在 backend/DayCap.Api/App_Data/）
 cd backend/DayCap.Api
 dotnet run --launch-profile http        # http://localhost:5230
 

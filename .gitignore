@@ -1,9 +1,12 @@
 .env
 **/bin/
 **/obj/
-backend/DayCap.Api/data/
+backend/DayCap.Api/App_Data/
 node_modules/
 frontend/dist/
 *.local
 .vs/
 .idea/
+*.db
+*.db-shm
+*.db-wal
