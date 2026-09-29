@@ -140,7 +140,8 @@ public class PeriodService(
                 previousIncome = pv.Income;
             }
         }
-        var plan = PlanBuilder.Build(period.StartDate, period.EndDate, timeline, days, previousIncome);
+        var installmentCharges = await InstallmentMath.ChargesAsync(db, period.UserId, period.StartDate, period.EndDate, ct);
+        var plan = PlanBuilder.Build(period.StartDate, period.EndDate, timeline, days, previousIncome, installmentCharges);
         // 從前面期間結轉過來的（月結、延後的超支，§10.2、§12.2）
         var carryovers = (await db.PeriodCarryovers.AsNoTracking()
                 .Where(c => c.UserId == period.UserId && c.TargetDate >= period.StartDate && c.TargetDate <= period.EndDate)
@@ -167,6 +168,7 @@ public class PeriodService(
         var types = await db.CashAccounts.AsNoTracking().Where(a => a.UserId == period.UserId).ToDictionaryAsync(a => a.Id, a => a.Type, ct);
         var adjustments = (await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == period.UserId).ToListAsync(ct)).Active();
         var (debts, settlements) = await DebtMath.LoadAsync(db, period.UserId, ct);
+        var prepayments = await InstallmentMath.PrepaymentsAsync(db, period.UserId, ct);
 
         List<ReconDiff> diffs = [];
         for (var iteration = 0; iteration < 5; iteration++)
@@ -179,7 +181,9 @@ public class PeriodService(
                 var flows = await FlowsAsync(period, view, prev.Date, r.Date, cache, depth, ct)
                             + adjustments.Where(a => a.Date > prev.Date && a.Date <= r.Date).Sum(a => a.Amount)
                             // 分帳的應收應付（§14）：代墊、收回、還款不是沒交代的差異
-                            + DebtMath.NetFlow(debts, settlements, d => d > prev.Date && d <= r.Date);
+                            + DebtMath.NetFlow(debts, settlements, d => d > prev.Date && d <= r.Date)
+                            // 分期提前還款（§15）：錢從資產出去、負債減少，不是花費
+                            - prepayments.Where(p => p.Date > prev.Date && p.Date <= r.Date).Sum(p => p.Amount);
                 next.Add(new ReconDiff(r.Id, r.Date, r.CreatedAt,
                     AccountService.Net(prev, types) + flows, AccountService.Net(r, types), r.UsePool));
             }

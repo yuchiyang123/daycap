@@ -7,6 +7,7 @@ import { getAssets, saveAssets } from '../api/endpoints'
 import type { AccountEdit, AccountType, AssetsView, GoalDto, GoalScope, HoldingDto } from '../api/types'
 import ReconcileSheet from '../components/ReconcileSheet.vue'
 import DebtsPanel from '../components/DebtsPanel.vue'
+import InstallmentsPanel from '../components/InstallmentsPanel.vue'
 import TransferSheet from '../components/TransferSheet.vue'
 import { money, pct, shortDate, signed } from '../lib/format'
 
@@ -224,6 +225,11 @@ function addGoal() {
       <section class="section">
         <h2 class="section-title">應收應付<span class="aside">代墊、借出借入；不算花費</span></h2>
         <DebtsPanel @changed="load()" />
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">分期付款<span class="aside">每期自動變成固定支出；提前還款不算花費</span></h2>
+        <InstallmentsPanel @changed="load()" />
       </section>
 
       <section class="section">

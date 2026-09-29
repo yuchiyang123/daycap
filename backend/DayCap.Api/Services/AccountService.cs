@@ -146,6 +146,7 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
             .Where(e => e.AccountId != null && e.InputMode == EntryInputMode.Actual).ToList();
         var (debts, settlements) = await DebtMath.LoadAsync(db, userId, ct);
         var debtKinds = debts.ToDictionary(d => d.Id, d => d.Kind);
+        var prepayments = await InstallmentMath.PrepaymentsAsync(db, userId, ct);
 
         var result = new Dictionary<int, decimal>();
         foreach (var (id, account) in accounts)
@@ -180,6 +181,11 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
             {
                 var incoming = debtKinds[s.DebtId] == DebtKind.Receivable;
                 delta += (incoming ? 1 : -1) * (liability ? -s.Amount : s.Amount);
+            }
+            // 分期提前還款（§15）
+            foreach (var p in prepayments.Where(p => p.AccountId == id && After(p.Date, p.CreatedAt)))
+            {
+                delta += liability ? p.Amount : -p.Amount;
             }
             result[id] = baseBalance + delta;
         }

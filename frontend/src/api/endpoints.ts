@@ -22,6 +22,9 @@ import type {
   SettingsView,
   SettingsEstimate,
   MonthEndReport,
+  InstallmentView,
+  CreateInstallmentRequest,
+  PrepayMode,
   DebtsView,
   DebtKind,
   JarView,
@@ -160,3 +163,11 @@ export const createDebt = (body: { kind: DebtKind; counterparty: string; amount:
 export const settleDebt = (id: number, body: { amount: number; accountId: number | null; date: string | null }) =>
   api<DebtsView>(`/api/debts/${id}/settle`, { method: 'POST', body })
 export const deleteDebt = (id: number) => api<DebtsView>(`/api/debts/${id}`, { method: 'DELETE' })
+
+// ---- 分期（§15）----
+export const getInstallments = () => api<InstallmentView[]>('/api/installments')
+export const previewInstallment = (body: CreateInstallmentRequest) => api<InstallmentView>('/api/installments/preview', { method: 'POST', body })
+export const createInstallment = (body: CreateInstallmentRequest) => api<InstallmentView[]>('/api/installments', { method: 'POST', body })
+export const prepayInstallment = (id: number, body: { amount: number; mode: PrepayMode; accountId: number | null; date: string | null }) =>
+  api<InstallmentView[]>(`/api/installments/${id}/prepay`, { method: 'POST', body })
+export const deleteInstallment = (id: number) => api<InstallmentView[]>(`/api/installments/${id}`, { method: 'DELETE' })

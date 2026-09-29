@@ -46,8 +46,9 @@ public sealed class PeriodPlan
 /// </summary>
 public static class PlanBuilder
 {
+    /// <param name="extraCharges">設定以外的固定支出（分期每期繳款，§15）；要在算 % 之前加進來，「扣掉固定支出後」的基準才對。</param>
     public static PeriodPlan Build(DateOnly start, DateOnly end, SettingsTimeline timeline, IReadOnlyDictionary<DateOnly, DayInfo> days,
-        decimal? previousActualIncome = null)
+        decimal? previousActualIncome = null, IReadOnlyList<PeriodFixedCharge>? extraCharges = null)
     {
         var startDoc = timeline.For(start).Doc;
         bool IsHoliday(DateOnly d) => days.TryGetValue(d, out var i) ? i.IsHoliday : d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
@@ -62,11 +63,37 @@ public static class PlanBuilder
                 : "非固定收入：這期以上期實際收入當基準。");
         }
         var fixedCharges = BudgetMath.FixedCharges(startDoc, start, end);
+        // 分期繳款：掛在它指定的固定類別；那個類別在這期的設定裡不存在（或不是固定類）時，另外列一個「分期付款」
+        var fixedIds = startDoc.Categories.Where(c => c.Mode == BudgetMode.Fixed).Select(c => c.Id).ToHashSet();
+        var orphanCharges = new List<PeriodFixedCharge>();
+        foreach (var c in extraCharges ?? [])
+        {
+            if (fixedIds.Contains(c.CategoryId)) fixedCharges.Add(c);
+            else orphanCharges.Add(c);
+        }
         var budgets = BudgetMath.CategoryBudgets(startDoc, fixedCharges, income);
+        // 找不到類別的分期繳款也是固定支出：% 基準要扣掉（CategoryBudgets 只認得設定裡的類別，所以另外扣）
+        if (orphanCharges.Count > 0 && startDoc.Base == PercentBase.AfterFixed)
+        {
+            var withOrphans = new List<PeriodFixedCharge>(fixedCharges);
+            withOrphans.AddRange(orphanCharges.Select(o => new PeriodFixedCharge { CategoryId = int.MinValue, Name = o.Name, Amount = o.Amount, DueDate = o.DueDate }));
+            budgets = BudgetMath.CategoryBudgets(startDoc, withOrphans, income);
+        }
         var categories = startDoc.Categories.Select((c, i) => new PeriodCategory
         {
             CategoryId = c.Id, Name = c.Name, Group = c.Group, Mode = c.Mode, SortOrder = i, Budget = budgets[c.Id],
         }).ToList();
+        if (orphanCharges.Count > 0)
+        {
+            const int orphanId = -15;
+            foreach (var c in orphanCharges) c.CategoryId = orphanId;
+            fixedCharges.AddRange(orphanCharges);
+            categories.Add(new PeriodCategory
+            {
+                CategoryId = orphanId, Name = "分期付款", Group = CategoryGroup.Other, Mode = BudgetMode.Fixed,
+                SortOrder = categories.Count, Budget = orphanCharges.Sum(c => c.Amount),
+            });
+        }
 
         // 期中才新增的分類：這期沒有額度（0），它的排程從待定區出
         var laterIndex = categories.Count;

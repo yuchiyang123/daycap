@@ -36,6 +36,8 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<Jar> Jars => Set<Jar>();
     public DbSet<Debt> Debts => Set<Debt>();
     public DbSet<DebtSettlement> DebtSettlements => Set<DebtSettlement>();
+    public DbSet<Installment> Installments => Set<Installment>();
+    public DbSet<InstallmentPrepayment> InstallmentPrepayments => Set<InstallmentPrepayment>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder c)
     {
@@ -135,6 +137,8 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
         b.Entity<Jar>().HasIndex(x => x.UserId);
         b.Entity<Debt>().HasIndex(x => new { x.UserId, x.Date });
         b.Entity<DebtSettlement>().HasIndex(x => new { x.UserId, x.DebtId });
+        b.Entity<Installment>().HasIndex(x => x.UserId);
+        b.Entity<InstallmentPrepayment>().HasIndex(x => new { x.UserId, x.InstallmentId });
         b.Entity<AssetSnapshot>().HasIndex(x => new { x.UserId, x.Date }).IsUnique();
         b.Entity<PriceQuote>(e =>
         {

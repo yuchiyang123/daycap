@@ -645,3 +645,41 @@ export interface DebtsView {
   payableTotal: number
   people: { counterparty: string; receivable: number; payable: number; net: number }[]
 }
+
+// ---- 分期（§15）----
+export type InstallmentMode = 'Simple' | 'Detailed'
+export type PrepayMode = 'ReduceAmount' | 'ReduceTerm'
+export interface CreateInstallmentRequest {
+  name: string
+  categoryId: number
+  mode: InstallmentMode
+  periods: number
+  firstDueDate: string
+  monthlyAmount?: number | null
+  principal?: number | null
+  annualRatePercent?: number | null
+  fee?: number | null
+  note?: string | null
+}
+export interface InstallmentView {
+  id: number
+  name: string
+  categoryId: number
+  mode: InstallmentMode
+  monthlyAmount: number | null
+  periods: number
+  principal: number | null
+  annualRatePercent: number | null
+  fee: number | null
+  firstDueDate: string
+  note: string | null
+  totalPayments: number
+  paidPayments: number
+  remaining: number
+  principalRemaining: number
+  nextDueDate: string | null
+  nextPayment: number | null
+  costTotal: number
+  schedule: { index: number; dueDate: string; payment: number; principal: number; interest: number; fee: number; balanceAfter: number }[]
+  prepayments: { id: number; date: string; amount: number; mode: PrepayMode; accountId: number | null }[]
+}
