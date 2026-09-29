@@ -167,6 +167,16 @@ function suggest(avgActual: number, current: number) {
             </ul>
           </template>
 
+          <template v-if="report.subItemOvers?.length">
+            <h3 class="sub-title">細項超過上限</h3>
+            <ul class="rows">
+              <li v-for="s in report.subItemOvers" :key="`${s.categoryId}-${s.name}`">
+                <span>{{ s.name }}<span class="muted small">・花 {{ money(s.spent) }}／上限 {{ money(s.cap ?? 0) }}</span></span>
+                <span class="num bad">超 {{ money(s.over) }}</span>
+              </li>
+            </ul>
+          </template>
+
           <template v-if="report.goals.length">
             <h3 class="sub-title">目標</h3>
             <ul class="rows">

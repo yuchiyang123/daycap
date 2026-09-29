@@ -19,7 +19,8 @@ public record MonthEndReport(
     decimal Unexplained,
     List<SlotSuggestion> Slots,
     List<GoalProgress> Goals,
-    MonthEndSummary? Summary);
+    MonthEndSummary? Summary,
+    List<SubItemView>? SubItemOvers = null);
 
 /// <summary>例：「午餐 12 天超預算，共多 1,440」。</summary>
 public record OverspendItem(string Label, int Days, decimal Total);

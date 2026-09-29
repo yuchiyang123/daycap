@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import MealTable from '../components/MealTable.vue'
 import PushSettings from '../components/PushSettings.vue'
+import SubItemsEditor from '../components/SubItemsEditor.vue'
 import { watch } from 'vue'
 import { estimateSettings } from '../api/endpoints'
 import type { PercentBase, SettingsEstimate } from '../api/types'
@@ -488,6 +489,8 @@ async function signOut() {
               @touch="touch"
             />
           </div>
+
+          <SubItemsEditor v-if="c.mode !== 'Fixed'" :cat="c" @touch="touch" />
 
           <!-- 固定項目 -->
           <div v-if="c.mode === 'Fixed'" class="sub-table">

@@ -31,7 +31,11 @@ public record PeriodView(
     List<string> Warnings,
     // 月結（§12.2）：這期是否已月結；上一期還沒月結時帶它的 Id（這期還不能正式啟用）
     bool Closed = false,
-    int? PreviousPeriodNeedsClosing = null);
+    int? PreviousPeriodNeedsClosing = null,
+    // 類別細項（§13）：各細項這期花了多少、上限、超過多少
+    List<SubItemView>? SubItems = null);
+
+public record SubItemView(int CategoryId, string Name, decimal? Cap, decimal Spent, decimal Over);
 
 /// <summary>對帳結果：Diff = 實際 − 預期；負的依超支規則處理（FromPool / Spread / Unabsorbed）。</summary>
 public record ReconciliationView(int Id, DateOnly Date, decimal Expected, decimal Actual, decimal Diff, decimal FromPool, decimal Spread, decimal Unabsorbed);
@@ -105,7 +109,8 @@ public record EntryView(
     decimal SpreadPerDay,
     // 從罐子付的部分（§11.2），不算進預算
     decimal JarCovered = 0,
-    int? JarId = null);
+    int? JarId = null,
+    string? SubItem = null);
 
 public record FixedChargeView(int? FixedItemId, int CategoryId, string Name, decimal Amount, DateOnly? DueDate, bool IsSubscription);
 
@@ -129,7 +134,9 @@ public record CreateEntryRequest(
     // Guardrail = Savings 時從哪個帳戶吸收
     int? GuardrailAccountId = null,
     // 從罐子付（§11.2）：額外花費才可以
-    int? JarId = null);
+    int? JarId = null,
+    // 類別細項（§13）
+    string? SubItem = null);
 
 /// <summary>回報時順便把它登記成訂閱：下個週期起變成固定支出。</summary>
 public record SubscriptionRequest(string Name, int TargetCategoryId, BillingCycle Cycle, int? DueDay);

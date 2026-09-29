@@ -117,7 +117,7 @@ async function removeExtra(id: number) {
               <span v-if="e!.isSubscription" class="tag accent">訂閱</span>
             </span>
             <span class="s-status muted">
-              {{ e!.categoryName }}
+              {{ e!.categoryName }}<template v-if="e!.subItem"> → {{ e!.subItem }}</template>
               <template v-if="e!.fromPool">・待分配池 {{ signed(-e!.fromPool) }}</template>
               <template v-if="e!.spread">・之後 {{ e!.spreadDays }} 天每天少約 {{ money(e!.spreadPerDay) }}</template>
               <template v-if="e!.envelopeOver">・超出月額度 {{ money(e!.envelopeOver) }}</template>

@@ -68,7 +68,9 @@ public record CategoryDoc(
     // 區塊底線（§7、§8.1，範本套用時給分配器用）
     decimal? Floor = null,
     // 每日類的自動分配（§8.2）；null 或 Enabled=false = 自己設定
-    MealAuto? Auto = null)
+    MealAuto? Auto = null,
+    // 類別細項（§13）：回報可以標細項，細項可選擇性設每期上限（只提醒，不改預算規則）
+    List<SubItemDoc>? SubItems = null)
 {
     [JsonIgnore]
     public bool IsPercent => UsePercent ?? true;
@@ -92,6 +94,9 @@ public record SlotDoc(
     decimal? HolidayFloor = null,
     // 假日這格自己的權重；null = Weight × 假日倍率。從「自己設定」切到自動時用來讓數字不跳（§8.2）
     decimal? HolidayWeight = null);
+
+/// <summary>類別細項（§13），例如娛樂 → 遊戲（每期最多 500）。</summary>
+public record SubItemDoc(string Name, decimal? Cap);
 
 public record FixedItemDoc(
     int Id,

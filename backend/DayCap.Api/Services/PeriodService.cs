@@ -151,8 +151,10 @@ public class PeriodService(
         }
         var dayStart = timeline.For(clock.Today).Doc.DayStart;
         var today = clock.LogicalToday(dayStart);
+        // 類別細項（§13）用這期「目前」有效的設定；只是彙總回報上的標記，不影響重播
+        var subItemDoc = timeline.For(today < period.StartDate ? period.StartDate : today > period.EndDate ? period.EndDate : today).Doc;
         PeriodView Run(IReadOnlyList<ReconDiff> diffs) =>
-            BudgetEngine.Compute(period, plan, today, utc => clock.LogicalDate(utc, dayStart), days, diffs);
+            SubItems.Decorate(BudgetEngine.Compute(period, plan, today, utc => clock.LogicalDate(utc, dayStart), days, diffs), subItemDoc);
 
         var recons = (await db.Reconciliations.AsNoTracking().Include(r => r.Lines).Where(r => r.UserId == period.UserId).ToListAsync(ct)).Active();
         if (extraRecon is not null) recons.Add(extraRecon);

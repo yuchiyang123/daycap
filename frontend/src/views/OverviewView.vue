@@ -8,9 +8,13 @@ import IncomeSheet from '../components/IncomeSheet.vue'
 import AllocateSheet from '../components/AllocateSheet.vue'
 import JarsPanel from '../components/JarsPanel.vue'
 import { store, setPeriod } from '../lib/store'
+import type { SubItemView } from '../api/types'
 import { groupLabel, modeLabel, money, parseDate, pct, shortDate, signed, toIso } from '../lib/format'
 
 const period = computed(() => store.period!)
+/** 類別細項（§13）：有花費或有設上限的才列 */
+const subsOf = (id: number) => (period.value.subItems ?? []).filter((x) => x.categoryId === id && (x.spent > 0 || x.cap !== null))
+const subLeft = (s: SubItemView) => (s.cap === null ? '' : s.over > 0 ? `超 ${money(s.over)}` : money(s.cap - s.spent))
 const cats = computed(() => period.value.categories)
 
 // 顏色跟著分類的設定順序固定，不會因為篩選或排序重新上色。
@@ -208,7 +212,8 @@ async function savePayday() {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(c, i) in cats" :key="c.categoryId">
+            <template v-for="(c, i) in cats" :key="c.categoryId">
+            <tr>
               <td>
                 <span class="sw" :style="{ background: i < 8 ? colorOf(i) : 'var(--line-2)' }" />
                 {{ c.name }}
@@ -221,6 +226,14 @@ async function savePayday() {
                 <Meter :value="c.projected" :max="c.budget" :level="c.projected > c.budget ? 'over' : c.mode === 'Envelope' && c.projected > c.budget * 0.85 ? 'near' : 'ok'" />
               </td>
             </tr>
+            <tr v-for="s in subsOf(c.categoryId)" :key="`${c.categoryId}-${s.name}`" class="sub-row">
+              <td>└ {{ s.name }}</td>
+              <td class="r">{{ s.cap !== null ? money(s.cap) : '—' }}</td>
+              <td class="r">{{ money(s.spent) }}</td>
+              <td class="r" :class="s.over > 0 ? 'bad' : ''">{{ subLeft(s) }}</td>
+              <td class="meter-col"></td>
+            </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -362,5 +375,11 @@ async function savePayday() {
 .cat {
   font-size: 12px;
   margin-left: 4px;
+}
+.sub-row td {
+  font-size: 12px;
+  color: var(--muted);
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 </style>

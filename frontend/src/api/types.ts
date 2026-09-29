@@ -135,6 +135,8 @@ export interface CategoryDto {
   amount?: number | null
   floor?: number | null
   auto?: MealAuto | null
+  /** 類別細項（§13） */
+  subItems?: SubItemDoc[] | null
 }
 
 export type HolidayShift = 'None' | 'Before' | 'After'
@@ -303,6 +305,7 @@ export interface EntryView {
   /** 從罐子付的部分（§11.2），不算進預算 */
   jarCovered?: number
   jarId?: number | null
+  subItem?: string | null
 }
 
 export type ShortfallChoice = 'Pool' | 'NextPeriod' | 'Split' | 'Savings'
@@ -362,6 +365,8 @@ export interface PeriodView {
   /** 月結（§12.2）：這期已月結；上一期還沒月結時是它的 Id */
   closed: boolean
   previousPeriodNeedsClosing: number | null
+  /** 類別細項彙總（§13） */
+  subItems?: SubItemView[] | null
 }
 
 export interface MonthEndReport {
@@ -389,6 +394,7 @@ export interface MonthEndReport {
   }[]
   goals: { name: string; current: number; target: number; progress: number; targetDate: string; estimatedDate: string | null }[]
   summary: { closedAt: string; result: number; decision: ShortfallChoice; carryAmount: number; message: string } | null
+  subItemOvers?: SubItemView[] | null
 }
 
 export interface ReconciliationView {
@@ -418,6 +424,8 @@ export interface CreateEntryRequest {
   guardrailAccountId?: number | null
   /** 從罐子付（§11.2）：只有額外花費可以 */
   jarId?: number | null
+  /** 類別細項（§13） */
+  subItem?: string | null
 }
 
 export interface EntryPreview {
@@ -594,4 +602,17 @@ export interface SaveJarRequest {
   monthlyAmount?: number | null
   autoSurplusPercent?: number | null
   fixedItemId?: number | null
+}
+
+// ---- 類別細項（§13）----
+export interface SubItemDoc {
+  name: string
+  cap: number | null
+}
+export interface SubItemView {
+  categoryId: number
+  name: string
+  cap: number | null
+  spent: number
+  over: number
 }

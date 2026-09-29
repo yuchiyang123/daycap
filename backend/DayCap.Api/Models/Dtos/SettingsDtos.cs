@@ -23,7 +23,8 @@ public record CategoryDto(
     bool UsePercent = true,
     decimal? Amount = null,
     decimal? Floor = null,
-    MealAuto? Auto = null);
+    MealAuto? Auto = null,
+    List<SubItemDoc>? SubItems = null);
 
 public record SlotDto(
     int Id,

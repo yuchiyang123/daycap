@@ -373,6 +373,15 @@ public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarServi
                 previous = offset;
             }
 
+            var subNames = new HashSet<string>();
+            foreach (var si in c.SubItems ?? [])
+            {
+                var n = si.Name?.Trim() ?? "";
+                if (n.Length is 0 or > 30) throw new ValidationException($"「{c.Name}」的細項名稱要 1 到 30 個字。");
+                if (!subNames.Add(n)) throw new ValidationException($"「{c.Name}」的細項「{n}」重複了。");
+                if (si.Cap is < 0 or > 100_000_000) throw new ValidationException($"「{c.Name}・{n}」上限超出範圍。");
+            }
+
             foreach (var f in c.FixedItems)
             {
                 if (string.IsNullOrWhiteSpace(f.Name) || f.Name.Trim().Length > 60) throw new ValidationException($"「{c.Name}」有固定項目名稱空白。");
@@ -397,7 +406,9 @@ public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarServi
                 c.Mode == BudgetMode.Fixed ? null : c.UsePercent,
                 c.Mode == BudgetMode.Fixed || c.UsePercent ? null : Math.Round(c.Amount ?? 0, 0),
                 c.Floor,
-                c.Mode == BudgetMode.Daily ? c.Auto : null
+                c.Mode == BudgetMode.Daily ? c.Auto : null,
+                c.Mode == BudgetMode.Fixed || c.SubItems is not { Count: > 0 } ? null
+                    : c.SubItems.Select(si => new SubItemDoc(si.Name.Trim(), si.Cap is null ? null : Math.Round(si.Cap.Value, 0))).ToList()
             )).ToList(),
             dto.PercentBase,
             dto.IncomeKind);
@@ -444,7 +455,7 @@ public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarServi
             c.Slots.Select(s => new SlotDto(s.Id, s.Name, s.Start, s.WorkdayAmount, s.HolidayAmount,
                 s.Weight, s.WorkdayLock, s.HolidayLock, s.WorkdayFloor, s.HolidayFloor, s.HolidayWeight)).ToList(),
             c.FixedItems.Select(f => new FixedItemDto(f.Id, f.Name, f.Amount, f.DueDay, f.IsSubscription, f.Cycle, f.BillingMonth, f.IsActive, f.ActiveFrom)).ToList(),
-            c.IsPercent, c.Amount, c.Floor, c.Auto
+            c.IsPercent, c.Amount, c.Floor, c.Auto, c.SubItems
         )).ToList(),
         d.Base,
         d.Kind);

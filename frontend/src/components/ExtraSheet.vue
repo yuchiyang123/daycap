@@ -39,6 +39,10 @@ const accountId = ref<number | null>(null)
 // 從罐子付（§11.2）：預約、年繳到期時用
 const jars = ref<JarView[]>([])
 const jarId = ref<number | null>(null)
+// 類別細項（§13）：這個分類設定過的細項當建議，也可以臨時打新的
+const subItem = ref('')
+const subSuggestions = computed(() => (period.value.subItems ?? []).filter((s) => s.categoryId === categoryId.value))
+const subCapHint = computed(() => subSuggestions.value.find((x) => x.name === subItem.value.trim() && x.cap !== null) ?? null)
 onMounted(async () => {
   payAccounts.value = (await getAccounts().catch(() => ({ accounts: [] as AccountView[] }))).accounts
   jars.value = (await getJars().catch(() => [] as JarView[])).filter((j) => !j.closed && j.balance > 0)
@@ -65,6 +69,7 @@ const request = computed<CreateEntryRequest | null>(() => {
     note: note.value.trim() || null,
     subscription: null,
     jarId: jarId.value,
+    subItem: subItem.value.trim() || null,
   }
 })
 
@@ -140,6 +145,15 @@ async function submit() {
           </select>
         </label>
       </div>
+
+      <label class="field">
+        細項（選填）
+        <input v-model="subItem" class="input" maxlength="30" list="sub-items" placeholder="例如 電影、遊戲" />
+        <datalist id="sub-items">
+          <option v-for="s in subSuggestions" :key="s.name" :value="s.name" />
+        </datalist>
+        <span v-if="subCapHint" class="hint num">{{ subCapHint.name }}這期已花 {{ money(subCapHint.spent) }}／上限 {{ money(subCapHint.cap ?? 0) }}</span>
+      </label>
 
       <label v-if="jars.length" class="field">
         從罐子付（選填）

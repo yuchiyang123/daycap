@@ -482,6 +482,7 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
             InputAmount = amount,
             UsePool = req.UsePool,
             Note = string.IsNullOrEmpty(note) ? null : note,
+            SubItem = req.SubItem?.Trim() is { Length: > 0 } sub ? sub[..Math.Min(sub.Length, 30)] : null,
             IsSubscription = req.Subscription is not null,
             TimeZoneId = "Asia/Taipei",
             CreatedAt = clock.UtcNow,

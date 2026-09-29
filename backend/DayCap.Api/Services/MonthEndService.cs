@@ -63,7 +63,9 @@ public class MonthEndService(
             view.Reconciliations.Sum(r => r.Diff),
             SlotSuggestions(view),
             await GoalsAsync(userId, view, ct),
-            summary);
+            summary,
+            // 細項中超最多的（§12.2 第 3 點、§13）
+            (view.SubItems ?? []).Where(x => x.Over > 0).OrderByDescending(x => x.Over).Take(5).ToList());
     }
 
     public async Task<MonthEndReport> CloseAsync(string userId, int periodId, CloseMonthRequest req, CancellationToken ct = default)
