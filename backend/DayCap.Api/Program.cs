@@ -38,6 +38,7 @@ builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IMonthEndService, MonthEndService>();
+builder.Services.AddScoped<DayCap.Api.Services.Onboarding.IOnboardingService, DayCap.Api.Services.Onboarding.OnboardingService>();
 
 builder.Services.AddHttpClient(CalendarService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient(QuoteService.HttpClientName, c =>

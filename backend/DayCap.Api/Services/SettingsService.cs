@@ -189,7 +189,22 @@ public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarServi
         {
             return new SettingsEstimate(today, today, 0, 0, 0, 0, 0, 0, 0, [], [ex.Message]);
         }
-        return await EstimateDocAsync(userId, doc, today.AddDays(1), ct);
+        return await EstimateDocAsync(userId, WithTemporaryIds(doc), today.AddDays(1), ct);
+    }
+
+    /// <summary>草稿裡新加的分類 / 時段 / 固定項目 Id 都是 0：試算前先給不重複的負數，免得彼此的金額混在一起。</summary>
+    private static SettingsDocument WithTemporaryIds(SettingsDocument doc)
+    {
+        int c = 0, s = 0, f = 0;
+        return doc with
+        {
+            Categories = doc.Categories.Select(x => x with
+            {
+                Id = x.Id > 0 ? x.Id : --c,
+                Slots = x.Slots.Select(y => y with { Id = y.Id > 0 ? y.Id : --s }).ToList(),
+                FixedItems = x.FixedItems.Select(y => y with { Id = y.Id > 0 ? y.Id : --f }).ToList(),
+            }).ToList(),
+        };
     }
 
     /// <summary>新設定生效那天所在的那一期：已經存在的期間就用它的起訖，否則依發薪規則推。</summary>

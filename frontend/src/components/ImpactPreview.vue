@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { EntryPreview } from '../api/types'
 import { money, signed } from '../lib/format'
+import OneTimeTip from './OneTimeTip.vue'
 
 /** 按下送出前，用後端試算結果說清楚「這筆會造成什麼影響」。 */
 const props = defineProps<{ preview: EntryPreview | null; loading: boolean; envelope?: boolean }>()
@@ -34,6 +35,12 @@ const lines = computed(() => {
   <div class="impact" :class="{ loading }" aria-live="polite">
     <template v-if="preview">
       <p v-for="(l, i) in lines" :key="i" :class="l.tone">{{ l.text }}</p>
+      <OneTimeTip v-if="!envelope && preview.entry.diff < 0" tip="surplus">
+        第一次省錢：少花的部分進待分配池，月底可以決定要存起來、分給別的分類，還是留著吸收之後的超支。
+      </OneTimeTip>
+      <OneTimeTip v-if="!envelope && preview.entry.diff > 0" tip="overspend">
+        第一次超支：先從待分配池扣，不夠的部分平均攤到之後的日子；每個時段最多扣到原本的一半，再多就讓你選怎麼處理。
+      </OneTimeTip>
       <div class="pool num">
         <span>待分配池</span>
         <span>

@@ -46,6 +46,13 @@ public class UserProfile
     /// <summary>已經看過的一次性提示（逗號分隔，例如 "surplus,overspend,reconcile"）。</summary>
     public string? SeenTips { get; set; }
 
+    /// <summary>套用的範本代號、版本與當時的值（§20.6：複製不連結，範本之後更新不影響）。</summary>
+    public string? TemplateCode { get; set; }
+
+    public int? TemplateVersion { get; set; }
+
+    public string? TemplateSnapshot { get; set; }
+
     // ---- 舊欄位（已不使用）：改存在設定版本裡，保留給舊資料匯入 ----
     public int MonthlyIncome { get; set; }
 

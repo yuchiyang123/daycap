@@ -15,6 +15,76 @@ export type IncomeAdjustmentKind =
 export interface Me {
   userId: string
   userName: string | null
+  /** 走過新手引導（§20.9）；舊使用者視為已完成 */
+  onboarded: boolean
+  /** 看過的一次性提示 */
+  seenTips: string[]
+}
+
+// ---- onboarding（§20）----
+export interface TemplateBlockDto {
+  key: string
+  name: string
+  percent: number
+  defaultChecked: boolean
+  hint: string | null
+}
+export interface TemplateDto {
+  code: string
+  version: number
+  name: string
+  blocks: TemplateBlockDto[]
+  fixedItemNames: string[]
+}
+export interface OnboardingState {
+  needed: boolean
+  appliedTemplate: string | null
+  templates: TemplateDto[]
+}
+export interface BlockChoice {
+  key: string
+  checked: boolean
+  amount: number | null
+}
+export interface ApplyTemplateRequest {
+  templateCode: string
+  income: number
+  paydayDay: number
+  blocks: BlockChoice[]
+  savingsMinPercent?: number | null
+}
+export interface TemplateBlockPreview {
+  key: string
+  name: string
+  checked: boolean
+  locked: boolean
+  templatePercent: number
+  baseline: number
+  amount: number
+  delta: number
+  actualPercent: number
+  hint: string | null
+}
+export interface TemplatePreview {
+  code: string
+  version: number
+  name: string
+  income: number
+  allocatorReady: boolean
+  blocks: TemplateBlockPreview[]
+  unallocated: number
+  meals: {
+    periodStart: string
+    periodEnd: string
+    weekdays: number
+    holidays: number
+    budget: number
+    perDayAverage: number
+    slots: { name: string; workday: number; holiday: number }[] | null
+    problem: string | null
+  } | null
+  errors: string[]
+  warnings: string[]
 }
 
 // ---- settings ----

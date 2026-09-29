@@ -22,6 +22,9 @@ import type {
   SettingsView,
   SettingsEstimate,
   MonthEndReport,
+  OnboardingState,
+  ApplyTemplateRequest,
+  TemplatePreview,
   ShortfallChoice,
   AllocationCell,
   AllocationResult,
@@ -130,3 +133,10 @@ export const closeMonth = (
   periodId: number,
   body: { decision: ShortfallChoice; accountId: number | null; slotChanges: { categoryId: number; slotId: number; workdayAmount: number; holidayAmount: number }[] },
 ) => api<MonthEndReport>(`/api/month-end/${periodId}`, { method: 'POST', body })
+
+// ---- onboarding（§20）----
+export const getOnboarding = () => api<OnboardingState>('/api/onboarding')
+export const previewTemplate = (body: ApplyTemplateRequest) => api<TemplatePreview>('/api/onboarding/preview', { method: 'POST', body })
+export const applyTemplate = (body: ApplyTemplateRequest) => api<TemplatePreview>('/api/onboarding/apply', { method: 'POST', body })
+export const skipOnboarding = () => api<void>('/api/onboarding/skip', { method: 'POST' })
+export const markTipSeen = (key: string) => api<string[]>(`/api/me/tips/${key}`, { method: 'POST' })

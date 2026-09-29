@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import Sheet from './Sheet.vue'
+import OneTimeTip from './OneTimeTip.vue'
 import { createReconciliation, getAccounts, previewReconciliation } from '../api/endpoints'
 import type { AccountView, ReconciliationResult } from '../api/types'
 import { loadCurrentPeriod, store } from '../lib/store'
@@ -120,6 +121,9 @@ async function submit() {
           <p class="num" :class="preview.diff < 0 ? 'bad' : preview.diff > 0 ? 'good' : ''">
             沒交代的差異 <b>{{ signed(preview.diff) }}</b>
           </p>
+          <OneTimeTip v-if="preview.diff !== 0" tip="reconcile">
+            第一次對帳有差額：常見原因是漏記了固定支出（房租、電信、訂閱）或某筆大額消費。固定會發生的，到設定頁加成固定支出，之後就不會再出現在差額裡。
+          </OneTimeTip>
           <p v-if="preview.diff > 0">多出來的進待分配池。</p>
           <template v-else-if="preview.diff < 0">
             <p v-if="preview.fromPool">待分配池先扣 {{ money(preview.fromPool) }}</p>

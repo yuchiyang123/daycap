@@ -87,4 +87,4 @@ public record DayOverrideRequest(bool? IsHoliday);
 
 public record CalendarDayDto(DateOnly Date, bool IsHoliday, string? Name);
 
-public record MeDto(string UserId, string? UserName);
+public record MeDto(string UserId, string? UserName, bool Onboarded = true, List<string>? SeenTips = null);
