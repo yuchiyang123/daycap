@@ -412,6 +412,40 @@ table.tbl {
 .btn.block {
   width: 100%;
 }
+/* 請求進行中（lib/buttonLoading.ts）：前面一個轉圈，不能再按 */
+.btn.is-loading,
+button.is-loading {
+  pointer-events: none;
+  cursor: progress;
+}
+.btn.is-loading::before,
+button.is-loading:not(.btn)::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.7s linear infinite;
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.btn.is-loading::before {
+  margin-right: 0;
+}
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn.is-loading::before,
+  button.is-loading:not(.btn)::before {
+    animation-duration: 2s;
+  }
+}
 
 :focus-visible {
   outline: 2px solid var(--accent);

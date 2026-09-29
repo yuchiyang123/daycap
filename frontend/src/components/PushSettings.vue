@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from './Skeleton.vue'
 import { onMounted, ref } from 'vue'
 import { api } from '../api/http'
 import { currentSubscription, isStandalone, pushSupported, subscribePush, unsubscribePush } from '../lib/push'
@@ -13,6 +14,7 @@ interface PushSettings {
   devices: number
 }
 const settings = ref<PushSettings | null>(null)
+const loaded = ref(false)
 const subscribed = ref(false)
 const busy = ref(false)
 const msg = ref<string | null>(null)
@@ -22,6 +24,7 @@ const ios = /iPhone|iPad/.test(navigator.userAgent)
 
 onMounted(async () => {
   settings.value = await api<PushSettings>('/api/push/settings').catch(() => null)
+  loaded.value = true
   subscribed.value = !!(await currentSubscription().catch(() => null))
 })
 
@@ -71,7 +74,8 @@ const test = () =>
       <button type="button" class="btn sm" :disabled="busy" @click="toggleDevice">{{ subscribed ? '這台不要收' : '在這台打開' }}</button>
     </div>
 
-    <template v-if="settings">
+    <Skeleton v-if="!loaded" :rows="2" />
+    <template v-else-if="settings">
       <label class="check">
         <input v-model="settings.enabled" type="checkbox" />
         <span>每晚通知<span class="hint">關掉就所有裝置都不發</span></span>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from './Skeleton.vue'
 import { onMounted, ref } from 'vue'
 import { api } from '../api/http'
 import { logout } from '../api/endpoints'
@@ -31,8 +32,10 @@ const busy = ref(false)
 
 // ---- 裝置 ----
 const sessions = ref<SessionView[]>([])
+const sessionsLoaded = ref(false)
 onMounted(async () => {
   sessions.value = await api<SessionView[]>('/api/sessions').catch(() => [])
+  sessionsLoaded.value = true
   lockAvailable.value = await lockSupported()
 })
 async function run(fn: () => Promise<void>) {
@@ -139,7 +142,8 @@ const deleteAll = () =>
 
     <div class="panel block">
       <b>登入中的裝置</b>
-      <ul v-if="sessions.length" class="sessions">
+      <Skeleton v-if="!sessionsLoaded" :rows="2" />
+      <ul v-else-if="sessions.length" class="sessions">
         <li v-for="s in sessions" :key="s.id" :class="{ muted: s.revoked }">
           <span>
             {{ s.device }}

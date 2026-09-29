@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from './Skeleton.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { createDebt, deleteDebt, getAccounts, getDebts, settleDebt } from '../api/endpoints'
@@ -97,7 +98,8 @@ function remove(d: DebtView) {
       <span>我欠別人 <b class="bad">{{ money(data.payableTotal) }}</b></span>
     </div>
 
-    <div v-if="open.length" class="panel">
+    <Skeleton v-if="!data" variant="list" :rows="2" />
+    <div v-else-if="open.length" class="panel">
       <ul class="list">
         <li v-for="d in open" :key="d.id" class="debt">
           <div class="d-main">

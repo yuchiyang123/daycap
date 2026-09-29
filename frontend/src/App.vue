@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from './components/Skeleton.vue'
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { store, loadCurrentPeriod, loadNotifications } from './lib/store'
@@ -68,7 +69,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
       </div>
       <NotStarted v-else-if="needsPeriod && store.notStarted" :info="store.notStarted" />
       <div v-else-if="needsPeriod && !store.period" class="page">
-        <p class="muted">載入中</p>
+        <Skeleton variant="page" />
       </div>
       <!-- 主要分頁留在記憶體：切回來立刻顯示上次的畫面，資料在背景更新（每個請求經過 Tunnel 約 1 秒） -->
       <RouterView v-else v-slot="{ Component, route: r }">

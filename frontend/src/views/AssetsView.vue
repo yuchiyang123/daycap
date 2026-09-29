@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from '../components/Skeleton.vue'
 import { computed, onActivated, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import LineChart, { type Series } from '../charts/LineChart.vue'
@@ -132,6 +133,7 @@ function addGoal() {
 
     <p v-if="error" class="error-box">{{ error }}</p>
 
+    <Skeleton v-if="!data && !error && !editing" variant="page" :header="false" />
     <template v-if="data && !editing">
       <section class="panel hero-box">
         <div>

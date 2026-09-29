@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from './Skeleton.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { addIncomeAdjustment, addTransfer, getRunway } from '../api/endpoints'
@@ -16,9 +17,11 @@ const runway = ref<RunwayView | null>(null)
 const error = ref<string | null>(null)
 const busy = ref(false)
 const topUp = ref('')
+const runwayLoaded = ref(false)
 
 onMounted(async () => {
   runway.value = await getRunway().catch(() => null)
+  runwayLoaded.value = true
 })
 useRefreshOnReturn(async () => (runway.value = await getRunway()))
 
@@ -69,7 +72,8 @@ function fromSavings() {
 
 <template>
   <div class="panel gap">
-    <div v-if="runway" class="runway">
+    <Skeleton v-if="!runwayLoaded" :rows="2" />
+    <div v-else-if="runway" class="runway">
       <div>
         <span class="label">照目前花法，存款還能撐</span>
         <span class="big num">{{ runway.runwayDays === null ? '—' : `${runway.runwayDays} 天` }}</span>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from '../components/Skeleton.vue'
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import ReconcileSheet from '../components/ReconcileSheet.vue'
@@ -250,7 +251,7 @@ function suggest(avgActual: number, current: number) {
         </button>
       </template>
     </template>
-    <p v-else-if="!error" class="muted">讀取中…</p>
+    <Skeleton v-else-if="!error" variant="page" :header="false" />
 
     <ReconcileSheet v-if="reconciling" @close="reconciling = false" @saved="reconciling = false; load()" />
   </div>

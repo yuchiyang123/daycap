@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from './Skeleton.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { createInstallment, deleteInstallment, getAccounts, getInstallments, getSettings, prepayInstallment, previewInstallment } from '../api/endpoints'
@@ -12,6 +13,7 @@ import { logicalToday, money, shortDate } from '../lib/format'
  */
 const emit = defineEmits<{ changed: [] }>()
 const items = ref<InstallmentView[]>([])
+const loaded = ref(false)
 const fixedCats = ref<CategoryDto[]>([])
 const accounts = ref<AccountView[]>([])
 const error = ref<string | null>(null)
@@ -21,6 +23,7 @@ useRefreshOnReturn(async () => (items.value = await getInstallments()))
 
 onMounted(async () => {
   items.value = await getInstallments().catch(() => [])
+  loaded.value = true
   fixedCats.value = ((await getSettings().catch(() => null))?.settings.categories ?? []).filter((c) => c.mode === 'Fixed')
   accounts.value = (await getAccounts().catch(() => ({ accounts: [] as AccountView[] }))).accounts.filter((a) => a.type !== 'CreditCard')
 })
@@ -136,7 +139,8 @@ function remove(i: InstallmentView) {
     <p v-if="error" class="error-box">{{ error }}</p>
     <p v-if="active.length" class="num small">剩下的本金（負債）合計 <b>{{ money(debtTotal) }}</b></p>
 
-    <div v-if="active.length" class="panel">
+    <Skeleton v-if="!loaded" variant="list" :rows="2" />
+    <div v-else-if="active.length" class="panel">
       <ul class="list">
         <li v-for="i in active" :key="i.id" class="item">
           <div class="i-head">

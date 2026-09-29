@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from './Skeleton.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { createTrip, endTrip, getTrips } from '../api/endpoints'
@@ -11,11 +12,13 @@ import { money, shortDate } from '../lib/format'
  * 旅途中記花費時可以填外幣，依填的匯率換成台幣。
  */
 const trips = ref<TripView[]>([])
+const loaded = ref(false)
 const error = ref<string | null>(null)
 const busy = ref(false)
 
 onMounted(async () => {
   trips.value = await getTrips().catch(() => [])
+  loaded.value = true
 })
 useRefreshOnReturn(async () => (trips.value = await getTrips()))
 const shown = computed(() => trips.value.filter((t) => t.status !== 'ended' || !t.jarClosed).slice(0, 5))
@@ -68,7 +71,8 @@ function end(t: TripView) {
 <template>
   <div class="trips">
     <p v-if="error" class="error-box">{{ error }}</p>
-    <div v-if="shown.length" class="panel">
+    <Skeleton v-if="!loaded" variant="list" :rows="1" />
+    <div v-else-if="shown.length" class="panel">
       <ul class="list">
         <li v-for="t in shown" :key="t.id" class="trip">
           <div class="t-head">

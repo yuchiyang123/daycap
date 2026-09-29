@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from '../components/Skeleton.vue'
 import { computed, onActivated, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import MealTable from '../components/MealTable.vue'
@@ -645,6 +646,7 @@ async function signOut() {
         </div>
       </section>
     </template>
+    <Skeleton v-else-if="!error" variant="page" :rows="4" :header="false" />
   </div>
 </template>
 

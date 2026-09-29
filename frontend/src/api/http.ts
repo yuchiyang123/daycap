@@ -1,3 +1,5 @@
+import { trackRequest } from '../lib/buttonLoading'
+
 export class ApiError extends Error {
   status: number
   /** ProblemDetails 原文（例如 409 還沒開始時帶的 notStarted）。 */
@@ -53,7 +55,12 @@ export interface RequestOptions {
   allowAnonymous?: boolean
 }
 
-export async function api<T>(url: string, opts: RequestOptions = {}): Promise<T> {
+/** 所有 API 請求；按鈕按下後開始的請求會讓那顆按鈕顯示載入動畫。 */
+export function api<T>(url: string, opts: RequestOptions = {}): Promise<T> {
+  return trackRequest(request<T>(url, opts))
+}
+
+async function request<T>(url: string, opts: RequestOptions = {}): Promise<T> {
   const method = opts.method ?? 'GET'
   const mutating = method !== 'GET'
 

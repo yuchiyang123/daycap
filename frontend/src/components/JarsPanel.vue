@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Skeleton from './Skeleton.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { closeJar, createJar, getJars, getSettings, moveJar, updateJar } from '../api/endpoints'
@@ -11,6 +12,7 @@ import { money, shortDate } from '../lib/format'
  * 錢從待分配池存進去；快到期的排前面（分配順序 1）。
  */
 const jars = ref<JarView[]>([])
+const loaded = ref(false)
 const error = ref<string | null>(null)
 const busy = ref(false)
 const showClosed = ref(false)
@@ -27,6 +29,7 @@ const closed = computed(() => jars.value.filter((j) => j.closed))
 
 async function load() {
   jars.value = await getJars().catch(() => [])
+  loaded.value = true
 }
 onMounted(load)
 useRefreshOnReturn(load)
@@ -140,7 +143,8 @@ function dueText(j: JarView) {
   <div class="jars">
     <p v-if="error" class="error-box">{{ error }}</p>
 
-    <div v-if="open.length" class="panel">
+    <Skeleton v-if="!loaded" variant="list" :rows="2" />
+    <div v-else-if="open.length" class="panel">
       <div v-for="(j, i) in open" :key="j.id" class="jar" :class="{ first: i === 0 }">
         <div class="j-head">
           <span>
