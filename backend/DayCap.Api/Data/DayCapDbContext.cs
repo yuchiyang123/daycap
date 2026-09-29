@@ -12,11 +12,9 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<FixedItem> FixedItems => Set<FixedItem>();
     public DbSet<DayTypeOverride> DayTypeOverrides => Set<DayTypeOverride>();
     public DbSet<CalendarDay> CalendarDays => Set<CalendarDay>();
+    public DbSet<SettingsVersion> SettingsVersions => Set<SettingsVersion>();
 
     public DbSet<BudgetPeriod> Periods => Set<BudgetPeriod>();
-    public DbSet<PeriodCategory> PeriodCategories => Set<PeriodCategory>();
-    public DbSet<DayAllocation> DayAllocations => Set<DayAllocation>();
-    public DbSet<PeriodFixedCharge> PeriodFixedCharges => Set<PeriodFixedCharge>();
     public DbSet<Entry> Entries => Set<Entry>();
     public DbSet<PoolTransfer> PoolTransfers => Set<PoolTransfer>();
     public DbSet<IncomeAdjustment> IncomeAdjustments => Set<IncomeAdjustment>();
@@ -28,6 +26,12 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<Goal> Goals => Set<Goal>();
     public DbSet<AssetSnapshot> AssetSnapshots => Set<AssetSnapshot>();
     public DbSet<PriceQuote> PriceQuotes => Set<PriceQuote>();
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder c)
+    {
+        // 金額一律 decimal（§0.6）；沒特別指定的都用 18,2
+        c.Properties<decimal>().HavePrecision(18, 2);
+    }
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -44,15 +48,18 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
         b.Entity<DailySlot>().Property(x => x.Name).HasMaxLength(40);
         b.Entity<FixedItem>().Property(x => x.Name).HasMaxLength(60);
 
+        b.Entity<SettingsVersion>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.EffectiveFrom });
+            e.Property(x => x.Note).HasMaxLength(200);
+        });
+
         b.Entity<DayTypeOverride>().HasKey(x => new { x.UserId, x.Date });
         b.Entity<CalendarDay>().HasKey(x => x.Date);
 
         b.Entity<BudgetPeriod>(e =>
         {
             e.HasIndex(x => new { x.UserId, x.StartDate }).IsUnique();
-            e.HasMany(x => x.Categories).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
-            e.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
-            e.HasMany(x => x.FixedCharges).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.Entries).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.PoolTransfers).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.IncomeAdjustments).WithOne().HasForeignKey(x => x.PeriodId).OnDelete(DeleteBehavior.Cascade);
@@ -75,7 +82,6 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
             e.Property(x => x.Key).HasMaxLength(80);
             e.Property(x => x.Kind).HasMaxLength(40);
         });
-        b.Entity<DayAllocation>().HasIndex(x => new { x.PeriodId, x.Date, x.SlotId }).IsUnique();
         b.Entity<Entry>(e =>
         {
             e.HasIndex(x => new { x.PeriodId, x.Date });

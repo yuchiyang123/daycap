@@ -3,11 +3,11 @@ import { computed, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import LineChart, { type Series } from '../charts/LineChart.vue'
 import Meter from '../charts/Meter.vue'
-import { addTransfer, deleteTransfer } from '../api/endpoints'
+import { addTransfer, deleteTransfer, setNextPayday } from '../api/endpoints'
 import IncomeSheet from '../components/IncomeSheet.vue'
 import AllocateSheet from '../components/AllocateSheet.vue'
 import { store, setPeriod } from '../lib/store'
-import { groupLabel, modeLabel, money, pct, shortDate, signed } from '../lib/format'
+import { groupLabel, modeLabel, money, parseDate, pct, shortDate, signed, toIso } from '../lib/format'
 
 const period = computed(() => store.period!)
 const cats = computed(() => period.value.categories)
@@ -100,6 +100,29 @@ async function removeTransfer(id: number) {
 const ledger = computed(() => [...period.value.pool.lines].reverse())
 const showIncome = ref(false)
 const showAllocate = ref(false)
+
+// ---- 手動覆蓋實際入帳日（§3.4）：＝下一期第一天 ----
+const editingPayday = ref(false)
+const paydayInput = ref('')
+const paydayError = ref<string | null>(null)
+const nextPayday = computed(() => {
+  const d = parseDate(period.value.endDate)
+  d.setDate(d.getDate() + 1)
+  return toIso(d)
+})
+function startPaydayEdit() {
+  paydayInput.value = nextPayday.value
+  paydayError.value = null
+  editingPayday.value = true
+}
+async function savePayday() {
+  try {
+    setPeriod(await setNextPayday(period.value.id, paydayInput.value))
+    editingPayday.value = false
+  } catch (e) {
+    paydayError.value = (e as Error).message
+  }
+}
 </script>
 
 <template>
@@ -111,6 +134,16 @@ const showAllocate = ref(false)
           {{ shortDate(period.startDate) }} – {{ shortDate(period.endDate) }}・實領 {{ money(period.income) }}
           <template v-if="period.income !== period.baseIncome">（預設 {{ money(period.baseIncome) }}）</template>
         </p>
+        <p class="sub">
+          平日 {{ period.weekdayCount }} 天・假日 {{ period.holidayCount }} 天・下次入帳 {{ shortDate(nextPayday) }}
+          <button v-if="!editingPayday" type="button" class="btn quiet sm inline" @click="startPaydayEdit">改入帳日</button>
+        </p>
+        <div v-if="editingPayday" class="payday-edit">
+          <input v-model="paydayInput" type="date" class="input compact" aria-label="實際入帳日" />
+          <button type="button" class="btn sm primary" @click="savePayday">確定</button>
+          <button type="button" class="btn sm" @click="editingPayday = false">取消</button>
+          <span v-if="paydayError" class="bad small">{{ paydayError }}</span>
+        </div>
       </div>
       <div class="head-actions">
         <button class="btn sm" @click="showIncome = true">本期薪資</button>
@@ -220,7 +253,7 @@ const showAllocate = ref(false)
         <h2 class="section-title">固定支出<span class="aside">鎖定，不用回報</span></h2>
         <div class="panel">
           <ul class="list">
-            <li v-for="f in period.fixedCharges" :key="f.id" class="fx">
+            <li v-for="(f, i) in period.fixedCharges" :key="`${f.fixedItemId ?? 'x'}-${i}`" class="fx">
               <span class="d num muted">{{ f.dueDate ? shortDate(f.dueDate) : '—' }}</span>
               <span class="t">
                 {{ f.name }}
@@ -244,6 +277,22 @@ const showAllocate = ref(false)
 .head-actions {
   display: flex;
   gap: 8px;
+}
+.btn.inline {
+  min-height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--accent);
+}
+.payday-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.payday-edit .input {
+  width: 160px;
 }
 .small {
   font-size: 12px;

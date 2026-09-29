@@ -11,12 +11,38 @@ public enum BudgetMode { Fixed, Daily, Envelope }
 
 public enum BillingCycle { Monthly, Yearly, Quarterly }
 
+/// <summary>
+/// 一份預算設定版本（§4.1）。EffectiveFrom 是邏輯日；重播時每一天套用那天有效的版本
+/// （EffectiveFrom ≤ 那天的版本中，生效日最晚的；同一天生效的取最後建立的）。
+/// 一般儲存的生效日是明天；IsCorrection = 走「更正」流程改過去，必須附原因。
+/// </summary>
+public class SettingsVersion
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = "";
+    public DateOnly EffectiveFrom { get; set; }
+
+    /// <summary>建立當下的邏輯日。今天建立、明天生效的版本，今天還沒回報的時段取較低值（§4.1 決定）。</summary>
+    public DateOnly CreatedOn { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsCorrection { get; set; }
+    public string? Note { get; set; }
+
+    /// <summary><see cref="Settings.SettingsDocument"/> 的 JSON。</summary>
+    public string Document { get; set; } = "";
+}
+
 public class UserProfile
 {
     public string UserId { get; set; } = "";
+
+    /// <summary>下一個可用的分類 / 時段 / 固定項目 Id（跨版本不重複）。</summary>
+    public int NextSettingsId { get; set; } = 1;
+
+    // ---- 舊欄位（已不使用）：改存在設定版本裡，保留給舊資料匯入 ----
     public int MonthlyIncome { get; set; }
 
-    /// <summary>週期起始日（發薪日），1–28。週期 = 這天到下個月同一天的前一天。</summary>
     public int CycleStartDay { get; set; } = 1;
 
     /// <summary>
@@ -25,7 +51,7 @@ public class UserProfile
     /// </summary>
     public DateOnly? StartDate { get; set; }
 
-    /// <summary>期末結算用的存款帳戶：超支從這裡扣；勾了 SurplusToAccount 的話結餘存進這裡。</summary>
+    // 期末自動從存款扣 / 結餘存入：依規格 §2.1 關閉（2026-09-29），欄位保留不用
     public int? SettlementAccountId { get; set; }
 
     public bool SurplusToAccount { get; set; }
@@ -33,6 +59,7 @@ public class UserProfile
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>舊的覆寫式設定（已不寫入）。第一次讀設定時匯入成設定版本，下一版移除。</summary>
 public class Category
 {
     public int Id { get; set; }

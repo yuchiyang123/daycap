@@ -31,8 +31,8 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
             quoteMap.TryGetValue(h.Symbol.ToUpperInvariant(), out var q);
             var price = h.ManualPrice ?? q?.Price;
             var source = h.ManualPrice is not null ? "manual" : q is not null ? "market" : "none";
-            var value = price is { } p ? (int)Math.Round(p * h.Shares, MidpointRounding.AwayFromZero) : 0;
-            var cost = (int)Math.Round(h.AvgCost * h.Shares, MidpointRounding.AwayFromZero);
+            var value = price is { } p ? Math.Round(p * h.Shares, 0, MidpointRounding.AwayFromZero) : 0m;
+            var cost = Math.Round(h.AvgCost * h.Shares, 0, MidpointRounding.AwayFromZero);
             var name = string.IsNullOrWhiteSpace(h.Name) ? q?.Name ?? h.Symbol : h.Name;
             return new HoldingView(h.Id, h.Symbol, name, h.Shares, h.AvgCost, h.ManualPrice, price, source,
                 h.ManualPrice is null ? q?.TradeDate : null, value, cost, value - cost);
@@ -53,7 +53,7 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
             };
             var monthsLeft = Math.Max(0, (g.TargetDate.Year - today.Year) * 12 + g.TargetDate.Month - today.Month);
             var gap = Math.Max(0, g.TargetAmount - current);
-            var monthly = gap == 0 ? 0 : (int)Math.Ceiling(gap / (decimal)Math.Max(1, monthsLeft));
+            var monthly = gap == 0 ? 0 : Math.Ceiling(gap / Math.Max(1, monthsLeft));
             var progress = g.TargetAmount <= 0 ? 1m : Math.Min(1m, Math.Round(current / (decimal)g.TargetAmount, 4));
             return new GoalView(g.Id, g.Name, g.TargetAmount, g.TargetDate, g.Scope, current, progress, monthsLeft, monthly);
         }).ToList();
@@ -109,17 +109,19 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
 
     public async Task<List<AssetAdjustmentView>> ListAdjustmentsAsync(string userId, DateOnly? from, DateOnly? to, CancellationToken ct = default)
     {
-        var q = db.AssetAdjustments.Where(a => a.UserId == userId);
-        if (from is { } f) q = q.Where(a => a.Date >= f);
-        if (to is { } t) q = q.Where(a => a.Date <= t);
-        var rows = await q.OrderByDescending(a => a.Date).ThenByDescending(a => a.Id).Take(500).ToListAsync(ct);
+        var all = await db.AssetAdjustments.Where(a => a.UserId == userId).ToListAsync(ct);
+        var rows = all.Active()
+            .Where(a => (from is null || a.Date >= from) && (to is null || a.Date <= to))
+            .OrderByDescending(a => a.Date).ThenByDescending(a => a.Id)
+            .Take(500)
+            .ToList();
         var names = await db.CashAccounts.Where(c => c.UserId == userId).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
         return rows.Select(a => ToView(a, names)).ToList();
     }
 
     public async Task<AssetAdjustmentView> AddAdjustmentAsync(string userId, CreateAssetAdjustmentRequest req, CancellationToken ct = default)
     {
-        if (req.Amount == 0 || Math.Abs((long)req.Amount) > 100_000_000) throw new ValidationException("金額不正確。");
+        if (req.Amount == 0 || Math.Abs(req.Amount) > 100_000_000) throw new ValidationException("金額不正確。");
         var account = await db.CashAccounts.FirstOrDefaultAsync(c => c.Id == req.CashAccountId && c.UserId == userId, ct)
                       ?? throw new ValidationException("找不到這個存款帳戶，先到資產頁新增一個。");
         var note = (req.Note ?? "").Trim();
@@ -143,7 +145,8 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
     /// <summary>刪除時把金額從帳戶餘額反向還原（帳戶已刪除就只刪紀錄）。</summary>
     public async Task DeleteAdjustmentAsync(string userId, int adjustmentId, CancellationToken ct = default)
     {
-        var adj = await db.AssetAdjustments.FirstOrDefaultAsync(a => a.Id == adjustmentId && a.UserId == userId, ct)
+        var all = await db.AssetAdjustments.Where(a => a.UserId == userId).ToListAsync(ct);
+        var adj = all.Active().FirstOrDefault(a => a.Id == adjustmentId)
                   ?? throw new NotFoundException("找不到這筆紀錄。");
         var account = await db.CashAccounts.FirstOrDefaultAsync(c => c.Id == adj.CashAccountId && c.UserId == userId, ct);
         if (account is not null)
@@ -151,7 +154,18 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
             account.Balance -= adj.Amount;
             account.UpdatedAt = clock.UtcNow;
         }
-        db.AssetAdjustments.Remove(adj);
+        // 只新增（§2.2）：刪除是新增一筆作廢紀錄
+        db.AssetAdjustments.Add(new AssetAdjustment
+        {
+            UserId = userId,
+            CashAccountId = adj.CashAccountId,
+            Date = adj.Date,
+            Note = "刪除",
+            Source = adj.Source,
+            IsVoid = true,
+            ReplacesId = adj.Id,
+            CreatedAt = clock.UtcNow,
+        });
         await db.SaveChangesAsync(ct);
     }
 
@@ -159,7 +173,7 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
         new(a.Id, a.CashAccountId, names.TryGetValue(a.CashAccountId, out var n) ? n : "（已刪除的帳戶）",
             a.Date, a.Amount, a.Note, a.Source, a.PeriodId, a.CreatedAt);
 
-    private async Task RecordSnapshotAsync(string userId, int cash, int investments, CancellationToken ct)
+    private async Task RecordSnapshotAsync(string userId, decimal cash, decimal investments, CancellationToken ct)
     {
         var today = clock.Today;
         var snap = await db.AssetSnapshots.FirstOrDefaultAsync(s => s.UserId == userId && s.Date == today, ct);
@@ -219,7 +233,7 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
         foreach (var c in req.CashAccounts)
         {
             if (string.IsNullOrWhiteSpace(c.Name) || c.Name.Trim().Length > 40) throw new ValidationException("帳戶名稱不能空白，最多 40 字。");
-            if (Math.Abs((long)c.Balance) > 2_000_000_000) throw new ValidationException($"「{c.Name}」金額超出範圍。");
+            if (Math.Abs(c.Balance) > 2_000_000_000) throw new ValidationException($"「{c.Name}」金額超出範圍。");
         }
         foreach (var h in req.Holdings)
         {

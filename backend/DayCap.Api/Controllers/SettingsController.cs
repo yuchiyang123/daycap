@@ -12,8 +12,9 @@ namespace DayCap.Api.Controllers;
 public class SettingsController(ISettingsService settings) : ControllerBase
 {
     [HttpGet]
-    public Task<SettingsDto> Get(CancellationToken ct) => settings.GetAsync(User.GetUserId(), ct);
+    public Task<SettingsView> Get(CancellationToken ct) => settings.GetAsync(User.GetUserId(), ct);
 
+    /// <summary>新增一筆設定版本：一般從明天起生效；帶 CorrectionFrom 是更正過去（必須附原因）。</summary>
     [HttpPut]
-    public Task<SettingsDto> Save(SettingsDto dto, CancellationToken ct) => settings.SaveAsync(User.GetUserId(), dto, ct);
+    public Task<SettingsView> Save(SaveSettingsRequest req, CancellationToken ct) => settings.SaveAsync(User.GetUserId(), req, ct);
 }

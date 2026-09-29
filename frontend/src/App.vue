@@ -5,7 +5,7 @@ import { store, loadCurrentPeriod, loadNotifications } from './lib/store'
 import NotStarted from './components/NotStarted.vue'
 import NotificationBell from './components/NotificationBell.vue'
 import NotificationPopup from './components/NotificationPopup.vue'
-import { toIso } from './lib/format'
+import { logicalToday } from './lib/format'
 
 const route = useRoute()
 const isPublic = computed(() => !!route.meta.public)
@@ -23,7 +23,7 @@ const tabs = [
 // PWA 常常整晚開著：回到前景時如果已經換日，重新抓本期資料。
 async function onVisible() {
   if (document.visibilityState !== 'visible') return
-  const today = toIso(new Date())
+  const today = logicalToday(store.period?.logicalDayStart)
   if (store.period && store.period.today !== today) await loadCurrentPeriod(true)
   // 等開始日期的時候，到了那天回到 app 就自動開始
   else if (store.notStarted && store.notStarted.startDate <= today) await loadCurrentPeriod(true)

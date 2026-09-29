@@ -38,6 +38,12 @@ export function parseDate(iso: string): Date {
   return new Date(y, m - 1, d)
 }
 
+/** 現在的邏輯日：時間往前推「邏輯日起點」再取日期（§3.1）。 */
+export function logicalToday(dayStart = '04:00'): string {
+  const [h, m] = dayStart.split(':').map(Number)
+  return toIso(new Date(Date.now() - (h * 60 + m) * 60_000))
+}
+
 export function toIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

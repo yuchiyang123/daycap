@@ -1,25 +1,39 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
-import { deleteBeforeStart, getAssets, getCalendar, getSettings, rebuildPeriod, saveSettings, setDayOverride, logout } from '../api/endpoints'
-import type { BudgetMode, CalendarDayDto, CashAccountDto, CategoryDto, CategoryGroup, SettingsDto } from '../api/types'
-import { store, setPeriod, loadCurrentPeriod } from '../lib/store'
+import { deleteBeforeStart, getCalendar, getSettings, saveSettings, setDayOverride, logout } from '../api/endpoints'
+import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, HolidayShift, SettingsDto, SettingsVersionSummary } from '../api/types'
+import { store, loadCurrentPeriod } from '../lib/store'
 import { dayLabel, groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
 import { applyTheme, currentTheme, type ThemeChoice } from '../lib/theme'
 
+/**
+ * 設定版本化（§4.1）：每次儲存都新增一個版本，一般從明天起生效；
+ * 今天還沒回報、而且調低的時段今天就生效（取較低值）。要改過去必須走「更正」並寫原因。
+ */
 const draft = ref<SettingsDto | null>(null)
+const today = ref('')
+const latestFrom = ref('')
+const versions = ref<SettingsVersionSummary[]>([])
 const error = ref<string | null>(null)
-const saved = ref(false)
+const savedMsg = ref<string | null>(null)
 const dirty = ref(false)
 const saving = ref(false)
-const needsRebuild = ref(false)
-const rebuilding = ref(false)
+const correcting = ref(false)
+const correctionFrom = ref('')
+const correctionNote = ref('')
+
+function applyView(v: { settings: SettingsDto; effectiveFrom: string; today: string; versions: SettingsVersionSummary[] }) {
+  draft.value = v.settings
+  today.value = v.today
+  latestFrom.value = v.effectiveFrom
+  versions.value = v.versions
+  savedStart.value = v.settings.startDate
+}
 
 onMounted(async () => {
   try {
-    draft.value = await getSettings()
-    savedStart.value = draft.value.startDate
-    accounts.value = (await getAssets()).cashAccounts
+    applyView(await getSettings())
     await loadCalendar()
   } catch (e) {
     error.value = (e as Error).message
@@ -28,7 +42,7 @@ onMounted(async () => {
 
 function touch() {
   dirty.value = true
-  saved.value = false
+  savedMsg.value = null
 }
 
 // ---- 金額換算 ----
@@ -45,7 +59,6 @@ const allocated = computed(() => draft.value?.categories.reduce((a, c) => a + am
 const unallocated = computed(() => income.value - allocated.value)
 
 // ---- 未分配的 % 一鍵分出去 ----
-const accounts = ref<CashAccountDto[]>([])
 const variableCats = computed(() => draft.value?.categories.filter((c) => c.mode !== 'Fixed') ?? [])
 const giveTarget = ref<number>(-1)
 const unallocatedPct = computed(() => (income.value > 0 ? Math.floor((unallocated.value / income.value) * 10000) / 100 : 0))
@@ -87,12 +100,19 @@ const segments = computed<Segment[]>(() => {
   return segs
 })
 
-// ---- 每日額度估算：用本期（或還沒開始時的第一期）實際的上班日 / 假日天數 ----
+// ---- 每日額度估算：用本期（或還沒開始時的第一期）實際的上班日 / 假日天數（§3.5）----
 const dayCounts = computed(() => {
+  if (store.period) return { work: store.period.weekdayCount, hol: store.period.holidayCount }
   const hol = calendar.value.filter((d) => d.isHoliday).length
   return { work: calendar.value.length - hol, hol }
 })
 const periodWord = computed(() => (store.period ? '本期' : '第一期'))
+const nextDay = computed(() => {
+  if (!today.value) return ''
+  const d = parseDate(today.value)
+  d.setDate(d.getDate() + 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+})
 function dailyEstimate(c: CategoryDto): number {
   const w = c.slots.reduce((a, s) => a + (Number(s.workdayAmount) || 0), 0)
   const h = c.slots.reduce((a, s) => a + (Number(s.holidayAmount) || 0), 0)
@@ -130,22 +150,52 @@ function removeCategory(i: number) {
 }
 function setMode(c: CategoryDto, m: BudgetMode) {
   c.mode = m
-  if (m === 'Daily' && c.slots.length === 0) c.slots.push({ id: 0, name: '', workdayAmount: 0, holidayAmount: 0 })
+  if (m === 'Daily' && c.slots.length === 0) c.slots.push({ id: 0, name: '', start: draft.value!.logicalDayStart, workdayAmount: 0, holidayAmount: 0 })
   touch()
 }
 
+// ---- 時段時間（§3.2 邊界銜接）：第一個固定從邏輯日起點開始 ----
+const toMin = (t: string) => {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
+}
+const fromMin = (x: number) => {
+  const v = ((x % 1440) + 1440) % 1440
+  return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`
+}
+/** 新時段預設接在最後一個後面 3 小時 */
+function addSlot(c: CategoryDto) {
+  const last = c.slots[c.slots.length - 1]
+  const start = last ? fromMin(toMin(last.start) + 180) : draft.value!.logicalDayStart
+  c.slots.push({ id: 0, name: '', start, workdayAmount: 0, holidayAmount: 0 })
+  touch()
+}
+/** 某個時段的結束時間＝下一個的開始；最後一個到隔天邏輯日起點 */
+function slotEnd(c: CategoryDto, i: number): string {
+  return c.slots[i + 1]?.start ?? draft.value!.logicalDayStart
+}
+/** 改邏輯日起點時，每個分類的第一個時段跟著移 */
+function onDayStartChange() {
+  for (const c of draft.value!.categories) if (c.slots[0]) c.slots[0].start = draft.value!.logicalDayStart
+  touch()
+}
+const shiftLabel: Record<HolidayShift, string> = { None: '不調整', Before: '往前推到最近的工作日', After: '往後推到最近的工作日' }
+
 async function save() {
   if (!draft.value) return
+  if (correcting.value && (!correctionFrom.value || correctionNote.value.trim().length < 2)) {
+    error.value = '更正過去要選生效日並寫原因。'
+    return
+  }
   saving.value = true
   error.value = null
   try {
     const startChanged = (draft.value.startDate || null) !== (savedStart.value || null)
     const clean: SettingsDto = {
+      logicalDayStart: draft.value.logicalDayStart,
       monthlyIncome: Math.round(Number(draft.value.monthlyIncome) || 0),
-      cycleStartDay: Math.round(Number(draft.value.cycleStartDay) || 1),
+      payday: { day: Math.round(Number(draft.value.payday.day) || 1), shift: draft.value.payday.shift },
       startDate: draft.value.startDate || null,
-      settlementAccountId: draft.value.settlementAccountId || null,
-      surplusToAccount: !!draft.value.surplusToAccount,
       categories: draft.value.categories.map((c) => ({
         ...c,
         percent: Number(c.percent) || 0,
@@ -158,34 +208,21 @@ async function save() {
         })),
       })),
     }
-    draft.value = await saveSettings(clean)
-    savedStart.value = draft.value.startDate
+    const v = await saveSettings(clean, correcting.value ? correctionFrom.value : null, correcting.value ? correctionNote.value.trim() : null)
+    applyView(v)
     dirty.value = false
-    saved.value = true
-    if (startChanged) {
-      // 開始日期變了：重新判斷現在是「還沒開始」還是要開第一期（新的一期直接用新設定，不用重建）
-      await loadCurrentPeriod(true)
-      await loadCalendar()
-    } else {
-      needsRebuild.value = !!store.period
-    }
+    savedMsg.value = correcting.value
+      ? `已存成更正版本，從 ${shortDate(v.effectiveFrom)} 起重算`
+      : `已存成新版本，${shortDate(v.effectiveFrom)} 起生效；今天還沒回報、而且調低的時段今天就生效`
+    correcting.value = false
+    correctionNote.value = ''
+    // 版本變了，本期的每日額度由後端重播重新算
+    await loadCurrentPeriod(true)
+    if (startChanged) await loadCalendar()
   } catch (e) {
     error.value = (e as Error).message
   } finally {
     saving.value = false
-  }
-}
-
-async function rebuild() {
-  if (!store.period) return
-  rebuilding.value = true
-  try {
-    setPeriod(await rebuildPeriod(store.period.id, null))
-    needsRebuild.value = false
-  } catch (e) {
-    error.value = (e as Error).message
-  } finally {
-    rebuilding.value = false
   }
 }
 
@@ -226,11 +263,16 @@ const calCells = computed(() => {
 })
 /** 點一下循環：照行事曆 → 強制假日 → 強制上班日 → 照行事曆。 */
 async function toggleDay(d: CalendarDayDto) {
+  if (d.date < today.value) return // 過去的日子不能改（§2.3）
   const custom = d.name === '自訂假日' ? 'hol' : d.name === '自訂上班日' ? 'work' : null
   const next = custom === null ? true : custom === 'hol' ? false : null
-  await setDayOverride(d.date, next)
-  await loadCalendar()
-  needsRebuild.value = !!store.period
+  try {
+    await setDayOverride(d.date, next)
+    await loadCalendar()
+    await loadCurrentPeriod(true)
+  } catch (e) {
+    error.value = (e as Error).message
+  }
 }
 
 // ---- 外觀 / 帳號 ----
@@ -250,22 +292,15 @@ async function signOut() {
     <header class="page-head">
       <div>
         <h1>設定</h1>
-        <p class="sub">改完按儲存，再決定要不要套用到本期</p>
+        <p class="sub">每次儲存都是一個新版本，從明天起生效；過去的日子不會被改</p>
       </div>
     </header>
 
     <p v-if="error" class="error-box">{{ error }}</p>
 
-    <div v-if="needsRebuild" class="notice">
-      <div>
-        <b>要把新設定套用到本期嗎？</b>
-        <p class="muted">只會重排今天起的每日額度；已經過去的日子和所有回報都不動。</p>
-      </div>
-      <div class="notice-actions">
-        <button class="btn sm" @click="needsRebuild = false">下期再生效</button>
-        <button class="btn sm primary" :disabled="rebuilding" @click="rebuild">{{ rebuilding ? '套用中' : '套用到本期' }}</button>
-      </div>
-    </div>
+    <p v-if="latestFrom > today" class="notice">
+      你看到的是 <b>{{ shortDate(latestFrom) }}</b> 起生效的版本；在那之前照舊的設定算。
+    </p>
 
     <template v-if="draft">
       <section class="section">
@@ -276,10 +311,20 @@ async function signOut() {
             <input v-model.number="draft.monthlyIncome" class="input num" inputmode="numeric" @input="touch" />
           </label>
           <label class="field">
-            週期起始日（發薪日）
-            <select v-model.number="draft.cycleStartDay" class="select" @change="touch">
-              <option v-for="d in 28" :key="d" :value="d">每月 {{ d }} 號</option>
+            發薪日
+            <select v-model.number="draft.payday.day" class="select" @change="touch">
+              <option v-for="d in 31" :key="d" :value="d">每月 {{ d }} 號{{ d > 28 ? '（小月是月底）' : '' }}</option>
             </select>
+          </label>
+          <label class="field">
+            發薪日遇到假日
+            <select v-model="draft.payday.shift" class="select" @change="touch">
+              <option v-for="(label, k) in shiftLabel" :key="k" :value="k">{{ label }}</option>
+            </select>
+          </label>
+          <label class="field">
+            一天從幾點開始算
+            <input v-model="draft.logicalDayStart" type="time" class="input" step="1800" @change="onDayStartChange" />
           </label>
           <div class="field start-field">
             <label for="start-date">開始日期（選填）</label>
@@ -289,8 +334,11 @@ async function signOut() {
             </div>
           </div>
           <p class="hint-line muted">
+            一天從 {{ draft.logicalDayStart }} 開始：凌晨 {{ draft.logicalDayStart }} 以前的消費算前一天（週六 01:00 的宵夜算週五）。
+          </p>
+          <p class="hint-line muted">
             <template v-if="draft.startDate">
-              {{ dayLabel(draft.startDate) }} 之前完全不排額度、不計算；第一期從那天到下一個 {{ draft.cycleStartDay }} 號前一天。
+              {{ dayLabel(draft.startDate) }} 之前完全不排額度、不計算；第一期從那天到下一個發薪日前一天。
             </template>
             <template v-else>還沒拿到薪水的話，填第一次發薪那天，在那之前 app 只顯示「還沒開始」。</template>
           </p>
@@ -324,30 +372,6 @@ async function signOut() {
             </div>
             <p class="muted small">不分也沒關係：沒分配的錢每期會進待定區，拿來補超支。</p>
           </div>
-        </div>
-      </section>
-
-      <section class="section">
-        <h2 class="section-title">期末結算<span class="aside">發薪日自動處理上一期</span></h2>
-        <div class="panel panel-pad settle">
-          <label class="field">
-            超支從哪個帳戶扣
-            <select v-model="draft.settlementAccountId" class="select" @change="touch">
-              <option :value="null">不自動扣，只提醒</option>
-              <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}（{{ money(a.balance) }}）</option>
-            </select>
-          </label>
-          <label class="check">
-            <input v-model="draft.surplusToAccount" type="checkbox" :disabled="!draft.settlementAccountId" @change="touch" />
-            <span>
-              結餘自動存入同一個帳戶
-              <span class="hint">不勾的話，花不完的錢不會動到資產</span>
-            </span>
-          </label>
-          <p class="muted small">
-            上一期結束後，待定區還是負的（也就是超支），發薪日會從這個帳戶扣掉；發薪日前 5 天會先提醒。
-            <template v-if="accounts.length === 0">還沒有存款帳戶，先到資產頁新增。</template>
-          </p>
         </div>
       </section>
 
@@ -388,15 +412,28 @@ async function signOut() {
           <!-- 每日時段 -->
           <div v-if="c.mode === 'Daily'" class="sub-table">
             <div class="st-row st-head muted">
-              <span>時段</span><span class="r">上班日</span><span class="r">假日</span><span />
+              <span>時段</span><span>時間</span><span class="r">上班日</span><span class="r">假日</span><span />
             </div>
             <div v-for="(s, si) in c.slots" :key="si" class="st-row">
-              <input v-model="s.name" class="input compact" placeholder="例如 早餐" maxlength="40" aria-label="時段名稱" @input="touch" />
-              <input v-model.number="s.workdayAmount" class="input compact num" inputmode="numeric" aria-label="上班日金額" @input="touch" />
-              <input v-model.number="s.holidayAmount" class="input compact num" inputmode="numeric" aria-label="假日金額" @input="touch" />
-              <button type="button" class="btn quiet sm danger" @click="c.slots.splice(si, 1); touch()">移除</button>
+              <input v-model="s.name" class="input compact st-name" placeholder="例如 早餐" maxlength="40" aria-label="時段名稱" @input="touch" />
+              <span class="st-time">
+                <input
+                  v-model="s.start"
+                  type="time"
+                  class="input compact"
+                  step="1800"
+                  :disabled="si === 0"
+                  :aria-label="`${s.name || '時段'}開始時間`"
+                  @change="touch"
+                />
+                <span class="muted until num">到 {{ slotEnd(c, si) }}</span>
+              </span>
+              <input v-model.number="s.workdayAmount" class="input compact num st-w" inputmode="numeric" placeholder="上班日" aria-label="上班日金額" @input="touch" />
+              <input v-model.number="s.holidayAmount" class="input compact num st-h" inputmode="numeric" placeholder="假日" aria-label="假日金額" @input="touch" />
+              <button type="button" class="btn quiet sm danger st-del" :disabled="c.slots.length === 1" @click="c.slots.splice(si, 1); touch()">移除</button>
             </div>
-            <button type="button" class="btn sm add" @click="c.slots.push({ id: 0, name: '', workdayAmount: 0, holidayAmount: 0 }); touch()">新增時段</button>
+            <p class="muted small">第一個時段固定從 {{ draft.logicalDayStart }} 開始，每個時段到下一個開始為止，24 小時剛好切滿。</p>
+            <button type="button" class="btn sm add" @click="addSlot(c)">新增時段</button>
           </div>
 
           <!-- 固定項目 -->
@@ -445,12 +482,41 @@ async function signOut() {
       </section>
 
       <div class="save-bar">
-        <span class="muted">{{ saved ? '已儲存' : dirty ? '有未儲存的變更' : '' }}</span>
-        <button class="btn primary" :disabled="saving || !dirty" @click="save">{{ saving ? '儲存中' : '儲存設定' }}</button>
+        <div class="save-info">
+          <span v-if="savedMsg" class="good">{{ savedMsg }}</span>
+          <span v-else-if="dirty" class="muted">
+            {{ correcting ? '更正：從指定日期起重算（過去的結果會改變）' : `儲存後從 ${shortDate(nextDay)} 起生效；調低的時段今天就生效` }}
+          </span>
+          <label class="check corr">
+            <input v-model="correcting" type="checkbox" />
+            <span>更正過去</span>
+          </label>
+          <div v-if="correcting" class="corr-fields">
+            <input v-model="correctionFrom" type="date" class="input compact" :max="today" aria-label="更正生效日" />
+            <input v-model="correctionNote" class="input compact" maxlength="200" placeholder="原因（必填），例如 薪資單記錯" aria-label="更正原因" />
+          </div>
+        </div>
+        <button class="btn primary" :disabled="saving || !dirty" @click="save">{{ saving ? '儲存中' : correcting ? '存成更正' : '儲存設定' }}</button>
       </div>
 
       <section class="section">
-        <h2 class="section-title">{{ periodWord }}假日<span class="aside">點一下切換：照行事曆 → 假日 → 上班日</span></h2>
+        <h2 class="section-title">設定版本<span class="aside">每次儲存都留一份，可以追溯</span></h2>
+        <div class="panel">
+          <ul class="list versions">
+            <li v-for="v in versions" :key="v.id">
+              <span class="num">{{ v.effectiveFrom <= '0001-01-01' ? '最早' : shortDate(v.effectiveFrom) }} 起</span>
+              <span>
+                <span v-if="v.isCorrection" class="tag">更正</span>
+                {{ v.note ?? '一般儲存' }}
+              </span>
+              <span class="muted num">{{ new Date(v.createdAt).toLocaleString('zh-TW', { hour12: false }) }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">{{ periodWord }}假日<span class="aside">點一下切換：照行事曆 → 假日 → 上班日（過去的日子不能改）</span></h2>
         <div class="panel cal">
           <div v-for="w in ['日', '一', '二', '三', '四', '五', '六']" :key="w" class="wd">{{ w }}</div>
           <template v-for="(d, i) in calCells" :key="i">
@@ -459,8 +525,9 @@ async function signOut() {
               v-else
               type="button"
               class="cell"
-              :class="{ hol: d.isHoliday, custom: d.name?.startsWith('自訂') }"
+              :class="{ hol: d.isHoliday, custom: d.name?.startsWith('自訂'), past: d.date < today }"
               :title="d.name ?? (d.isHoliday ? '假日' : '上班日')"
+              :disabled="d.date < today"
               @click="toggleDay(d)"
             >
               <span class="dn">{{ parseDate(d.date).getDate() }}</span>
@@ -605,9 +672,51 @@ async function signOut() {
   flex-direction: column;
   gap: 6px;
 }
+.st-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.st-time .input {
+  width: 96px;
+}
+.until {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cell.past {
+  opacity: 0.45;
+  cursor: default;
+}
+.save-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  flex: 1;
+  min-width: 0;
+}
+.corr {
+  font-size: 13px;
+}
+.corr-fields {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 6px;
+  width: 100%;
+}
+.versions li {
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  align-items: center;
+}
 .st-row {
   display: grid;
-  grid-template-columns: 1fr 90px 90px 56px;
+  grid-template-columns: 1fr 170px 80px 80px 56px;
   gap: 8px;
   align-items: center;
 }
@@ -778,7 +887,42 @@ async function signOut() {
     display: none;
   }
   .st-row {
-    grid-template-columns: 1fr 70px 70px 48px;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      'name time'
+      'w h'
+      '. del';
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .st-row.st-head {
+    display: none;
+  }
+  .st-name {
+    grid-area: name;
+  }
+  .st-time {
+    grid-area: time;
+  }
+  .st-w {
+    grid-area: w;
+  }
+  .st-h {
+    grid-area: h;
+  }
+  .st-del {
+    grid-area: del;
+    justify-self: end;
+  }
+  .corr-fields {
+    grid-template-columns: 1fr;
+  }
+  .versions li {
+    grid-template-columns: 60px 1fr;
+  }
+  .versions li > :last-child {
+    grid-column: 2;
+    font-size: 11px;
   }
   .two {
     grid-template-columns: 1fr;

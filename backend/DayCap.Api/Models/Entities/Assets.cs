@@ -5,7 +5,7 @@ public class CashAccount
     public int Id { get; set; }
     public string UserId { get; set; } = "";
     public string Name { get; set; } = "";
-    public int Balance { get; set; }
+    public decimal Balance { get; set; }
     public int SortOrder { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -37,7 +37,7 @@ public class Goal
     public int Id { get; set; }
     public string UserId { get; set; } = "";
     public string Name { get; set; } = "";
-    public int TargetAmount { get; set; }
+    public decimal TargetAmount { get; set; }
     public DateOnly TargetDate { get; set; }
     public GoalScope Scope { get; set; }
     public int SortOrder { get; set; }
@@ -49,8 +49,8 @@ public class AssetSnapshot
     public int Id { get; set; }
     public string UserId { get; set; } = "";
     public DateOnly Date { get; set; }
-    public int Cash { get; set; }
-    public int Investments { get; set; }
+    public decimal Cash { get; set; }
+    public decimal Investments { get; set; }
 }
 
 /// <summary>收盤價快取（證交所 / 櫃買中心 OpenAPI）。</summary>
@@ -67,13 +67,13 @@ public class PriceQuote
 /// 直接加減某個存款帳戶的一筆紀錄（記帳頁的「資產加減」，或週期結算自動扣除 / 存入）。
 /// 新增時同步改帳戶餘額，刪除時反向還原。
 /// </summary>
-public class AssetAdjustment
+public class AssetAdjustment : IFact
 {
     public int Id { get; set; }
     public string UserId { get; set; } = "";
     public int CashAccountId { get; set; }
     public DateOnly Date { get; set; }
-    public int Amount { get; set; }
+    public decimal Amount { get; set; }
     public string Note { get; set; } = "";
 
     /// <summary>manual = 記帳頁手動；settlement = 週期結算。</summary>
@@ -81,6 +81,9 @@ public class AssetAdjustment
 
     public int? PeriodId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public int? ReplacesId { get; set; }
+    public bool IsVoid { get; set; }
 }
 
 /// <summary>

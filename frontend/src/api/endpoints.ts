@@ -14,6 +14,7 @@ import type {
   PeriodSummary,
   PeriodView,
   SettingsDto,
+  SettingsView,
 } from './types'
 
 export const getMe = () => api<Me>('/api/me', { allowAnonymous: true })
@@ -34,8 +35,10 @@ export async function logout(): Promise<void> {
 
 export const externalLoginUrl = (provider: 'google' | 'github') => `/api/auth/external/${provider}/login`
 
-export const getSettings = () => api<SettingsDto>('/api/settings')
-export const saveSettings = (dto: SettingsDto) => api<SettingsDto>('/api/settings', { method: 'PUT', body: dto })
+export const getSettings = () => api<SettingsView>('/api/settings')
+/** 新增一筆設定版本：一般從明天起生效；correctionFrom 有值是更正過去（必須附原因） */
+export const saveSettings = (settings: SettingsDto, correctionFrom: string | null = null, correctionNote: string | null = null) =>
+  api<SettingsView>('/api/settings', { method: 'PUT', body: { settings, correctionFrom, correctionNote } })
 
 export const getCalendar = (from: string, to: string) =>
   api<CalendarDayDto[]>(`/api/calendar?from=${from}&to=${to}`)
@@ -46,8 +49,9 @@ export const listPeriods = () => api<PeriodSummary[]>('/api/periods')
 export const getCurrentPeriod = () => api<PeriodView>('/api/periods/current')
 export const deleteBeforeStart = () => api<{ deleted: number }>('/api/periods/before-start', { method: 'DELETE' })
 export const getPeriod = (id: number) => api<PeriodView>(`/api/periods/${id}`)
-export const rebuildPeriod = (id: number, fromDate: string | null) =>
-  api<PeriodView>(`/api/periods/${id}/rebuild`, { method: 'POST', body: { fromDate } })
+/** 手動覆蓋本期結束後的實際入帳日（＝下一期第一天） */
+export const setNextPayday = (id: number, date: string) =>
+  api<PeriodView>(`/api/periods/${id}/next-payday`, { method: 'PUT', body: { date } })
 
 export const createEntry = (periodId: number, req: CreateEntryRequest) =>
   api<PeriodView>(`/api/periods/${periodId}/entries`, { method: 'POST', body: req })

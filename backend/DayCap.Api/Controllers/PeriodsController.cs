@@ -25,9 +25,10 @@ public class PeriodsController(IPeriodService periods, IEntryService entries) : 
     [HttpGet("{id:int}")]
     public Task<PeriodView> Get(int id, CancellationToken ct) => periods.GetAsync(User.GetUserId(), id, ct);
 
-    [HttpPost("{id:int}/rebuild")]
-    public Task<PeriodView> Rebuild(int id, RebuildRequest req, CancellationToken ct) =>
-        periods.RebuildAsync(User.GetUserId(), id, req.FromDate, ct);
+    /// <summary>手動覆蓋本期結束後的實際入帳日（§3.4）。</summary>
+    [HttpPut("{id:int}/next-payday")]
+    public Task<PeriodView> SetNextPayday(int id, NextPaydayRequest req, CancellationToken ct) =>
+        periods.SetNextPaydayAsync(User.GetUserId(), id, req.Date, ct);
 
     [HttpPost("{id:int}/entries")]
     public Task<PeriodView> CreateEntry(int id, CreateEntryRequest req, CancellationToken ct) =>

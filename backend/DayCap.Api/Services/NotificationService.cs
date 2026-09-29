@@ -43,7 +43,7 @@ public class NotificationService(
 
     public async Task<NotificationsView> GetAsync(string userId, CancellationToken ct = default)
     {
-        var today = clock.Today;
+        var today = await settings.LogicalTodayAsync(userId, ct);
         PeriodView? current = null;
         try
         {
@@ -75,11 +75,6 @@ public class NotificationService(
             }
         }
 
-        var profile = await settings.EnsureProfileAsync(userId, ct);
-        var accountName = profile.SettlementAccountId is { } aid
-            ? await db.CashAccounts.Where(c => c.Id == aid && c.UserId == userId).Select(c => c.Name).FirstOrDefaultAsync(ct)
-            : null;
-
         var rows = await db.Notifications.Where(n => n.UserId == userId)
             .OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id)
             .Take(30)
@@ -89,7 +84,7 @@ public class NotificationService(
         {
             var (title, lines, tone) = n.Kind switch
             {
-                "reminder" when current is not null && n.PeriodId == current.Id => Reminder(current, accountName, today),
+                "reminder" when current is not null && n.PeriodId == current.Id => Reminder(current, today),
                 "reminder" => ("發薪日前提醒", new List<string> { "這一期已經結束了。" }, "ok"),
                 "settlement" => Settlement(n.Payload),
                 _ => ("通知", new List<string>(), "ok"),
@@ -120,7 +115,7 @@ public class NotificationService(
     }
 
     /// <summary>用本期最新的數字組提醒內容：會不會超、超多少、發薪日後會怎樣、要怎麼救。</summary>
-    public static (string Title, List<string> Lines, string Tone) Reminder(PeriodView p, string? accountName, DateOnly today)
+    public static (string Title, List<string> Lines, string Tone) Reminder(PeriodView p, DateOnly today)
     {
         var payday = p.EndDate.AddDays(1);
         var daysLeft = Math.Max(0, p.EndDate.DayNumber - today.DayNumber + 1);
@@ -131,15 +126,13 @@ public class NotificationService(
         if (pool < 0)
         {
             lines.Add($"照目前的花費和排程，本期會超支 {-pool:N0}。");
-            lines.Add(accountName is null
-                ? "發薪日後會自動從資產扣除——但還沒設定結算帳戶，請到設定選一個。"
-                : $"發薪日後會自動從「{accountName}」扣除 {-pool:N0}。");
+            lines.Add("不會自動從存款扣；發薪後月結時，要決定怎麼補這個缺口。");
             if (daysLeft > 0)
-                lines.Add($"想保住資產：接下來每天少花約 {(int)Math.Ceiling(-pool / (decimal)daysLeft):N0}，或到總覽把其他分類的錢挪過來。");
+                lines.Add($"想不動到存款：接下來每天少花約 {Math.Ceiling(-pool / daysLeft):N0}，或到總覽把其他分類的錢挪過來。");
         }
         else if (over.Count > 0)
         {
-            lines.Add($"有分類會超過額度，但待定區還有 {pool:N0} 可以補，目前不會動到資產。");
+            lines.Add($"有分類會超過額度，但待定區還有 {pool:N0} 可以補。");
         }
         else
         {
@@ -161,21 +154,24 @@ public class NotificationService(
         if (s is null) return ("結算", [], "ok");
 
         var lines = new List<string>();
-        if (s.Balance < 0)
+        if (s.Applied != 0)
         {
+            // 2026-09-29 之前的舊結算（當時會自動動存款）
             lines.Add(s.Applied < 0
                 ? $"本期超支 {-s.Balance:N0}，已從「{s.AccountName}」扣除。"
-                : $"本期超支 {-s.Balance:N0}。還沒設定結算帳戶，所以沒有自動扣除，請到設定選一個帳戶。");
+                : $"本期結餘 {s.Balance:N0}，已存入「{s.AccountName}」。");
+        }
+        else if (s.Balance < 0)
+        {
+            lines.Add($"本期超支 {-s.Balance:N0}。沒有自動從存款扣，月結時再決定怎麼補。");
         }
         else if (s.Balance > 0)
         {
-            lines.Add(s.Applied > 0
-                ? $"本期結餘 {s.Balance:N0}，已存入「{s.AccountName}」。"
-                : $"本期結餘 {s.Balance:N0}，沒有自動存入（設定頁可以改成結餘自動存入帳戶）。");
+            lines.Add($"本期結餘 {s.Balance:N0}。沒有自動移動，月結時再決定放哪裡。");
         }
         else
         {
-            lines.Add("本期剛好用完，資產沒有變動。");
+            lines.Add("本期剛好用完。");
         }
         return ($"{s.Label} 結算", lines, s.Balance < 0 ? "warn" : "ok");
     }

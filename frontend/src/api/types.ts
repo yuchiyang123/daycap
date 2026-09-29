@@ -21,6 +21,8 @@ export interface Me {
 export interface SlotDto {
   id: number
   name: string
+  /** 開始時間 HH:mm；結束＝下一個時段的開始（§3.2 邊界銜接） */
+  start: string
   workdayAmount: number
   holidayAmount: number
 }
@@ -47,13 +49,31 @@ export interface CategoryDto {
   fixedItems: FixedItemDto[]
 }
 
+export type HolidayShift = 'None' | 'Before' | 'After'
+
 export interface SettingsDto {
+  /** 邏輯日起點 HH:mm（§3.1） */
+  logicalDayStart: string
   monthlyIncome: number
-  cycleStartDay: number
+  payday: { day: number; shift: HolidayShift }
   startDate: string | null
-  settlementAccountId: number | null
-  surplusToAccount: boolean
   categories: CategoryDto[]
+}
+
+export interface SettingsVersionSummary {
+  id: number
+  effectiveFrom: string
+  createdAt: string
+  isCorrection: boolean
+  note: string | null
+}
+
+/** 設定頁看到的是最新一份（可能明天才生效）；today 是邏輯日 */
+export interface SettingsView {
+  settings: SettingsDto
+  effectiveFrom: string
+  today: string
+  versions: SettingsVersionSummary[]
 }
 
 export interface CalendarDayDto {
@@ -80,7 +100,7 @@ export interface PeriodSummary {
 export interface PoolLine {
   date: string
   amount: number
-  kind: 'Opening' | 'Surplus' | 'Cover' | 'Unabsorbed' | 'EnvelopeOver' | 'Transfer' | 'Income' | 'Allocate'
+  kind: 'Opening' | 'Surplus' | 'Cover' | 'Unabsorbed' | 'EnvelopeOver' | 'Transfer' | 'Income' | 'Allocate' | 'Settings' | 'Lower'
   label: string
   entryId: number | null
   transferId: number | null
@@ -146,7 +166,7 @@ export interface EntryView {
 }
 
 export interface FixedChargeView {
-  id: number
+  fixedItemId: number | null
   categoryId: number
   name: string
   amount: number
@@ -176,14 +196,17 @@ export interface PeriodView {
   id: number
   startDate: string
   endDate: string
+  /** 邏輯日（§3.1） */
   today: string
-  /** 實領 = 設定的月收入 + 本期薪資調整 */
+  logicalDayStart: string
+  weekdayCount: number
+  holidayCount: number
+  /** 實領 = 期間第一天有效的月收入 + 本期薪資調整 */
   income: number
   baseIncome: number
   incomeAdjustments: IncomeAdjustmentView[]
   incomeConfirmed: boolean
   settledAt: string | null
-  settlementAmount: number | null
   pool: { opening: number; balance: number; lines: PoolLine[] }
   categories: CategoryView[]
   days: DayView[]

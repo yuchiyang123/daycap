@@ -9,7 +9,7 @@ namespace DayCap.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/calendar")]
-public class CalendarController(ICalendarService calendar) : ControllerBase
+public class CalendarController(ICalendarService calendar, ISettingsService settings) : ControllerBase
 {
     [HttpGet]
     public async Task<List<CalendarDayDto>> Get([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
@@ -23,6 +23,9 @@ public class CalendarController(ICalendarService calendar) : ControllerBase
     [HttpPut("overrides/{date}")]
     public async Task<IActionResult> SetOverride(DateOnly date, DayOverrideRequest req, CancellationToken ct)
     {
+        // 假日覆寫會改變那天的額度，屬於對未來的設定：過去的日子不能改（§2.3）
+        if (date < await settings.LogicalTodayAsync(User.GetUserId(), ct))
+            throw new ValidationException("過去的日子不能改成假日或上班日。");
         await calendar.SetOverrideAsync(User.GetUserId(), date, req.IsHoliday, ct);
         return NoContent();
     }
