@@ -63,10 +63,18 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
         }
 
         var jar = req.JarId is { } jarId ? await PrepareJarPaymentAsync(userId, entry, jarId, req, ct) : null;
+        var split = PrepareSplit(entry, req);
 
         period.Entries.Add(entry);
         await db.SaveChangesAsync(ct);
         if (jar is not null) await AfterJarPaymentAsync(userId, period, entry, jar, view.Today, ct);
+        if (split is not null)
+        {
+            split.UserId = userId;
+            split.SourceEntryId = entry.Id;
+            db.Debts.Add(split);
+            await db.SaveChangesAsync(ct);
+        }
 
         var after = await periods.ComputeAsync(period, ct);
         if (await AutoSaveSurplusAsync(userId, period, entry, after, ct)) after = await periods.ComputeAsync(period, ct);
@@ -80,6 +88,34 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
             }
         }
         return after;
+    }
+
+    /// <summary>
+    /// 分帳（§14）：我全付 → 回報的是我的份，多付的記應收（從同一個付款帳戶出去）；
+    /// 對方先付 → 回報的是我的份，照扣預算，記應付，錢沒從我的帳戶出去（所以不記付款帳戶）。
+    /// </summary>
+    private Debt? PrepareSplit(Entry entry, CreateEntryRequest req)
+    {
+        if (req.Split is not { } s) return null;
+        if (entry.InputMode != EntryInputMode.Actual) throw new ValidationException("分帳要輸入實際金額（我的份）。");
+        if (!Enum.IsDefined(s.Kind)) throw new ValidationException("分帳方式不正確。");
+        var name = DebtService.CleanName(s.Counterparty);
+        if (s.Kind == SplitKind.IPaid)
+        {
+            var total = Math.Round(s.Total ?? 0, 0);
+            if (total <= entry.InputAmount || total > 100_000_000) throw new ValidationException("我全付時，總額要比我的份多。");
+            return new Debt
+            {
+                Kind = DebtKind.Receivable, Counterparty = name, Amount = total - entry.InputAmount, Date = entry.Date,
+                AccountId = entry.AccountId, Note = entry.Note, CreatedAt = clock.UtcNow,
+            };
+        }
+        if (entry.InputAmount <= 0) throw new ValidationException("對方先付時，我的份要大於 0。");
+        entry.AccountId = null;
+        return new Debt
+        {
+            Kind = DebtKind.Payable, Counterparty = name, Amount = entry.InputAmount, Date = entry.Date, Note = entry.Note, CreatedAt = clock.UtcNow,
+        };
     }
 
     /// <summary>從罐子付（§11.2）：罐子餘額能付多少就付多少，超過的部分照一般超支規則。</summary>
@@ -299,6 +335,10 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
     /// <summary>刪回報時，把護欄選擇產生的「補回待分配池」、結轉、存款吸收一起作廢。</summary>
     private async Task VoidLinkedAsync(string userId, BudgetPeriod period, int entryId, CancellationToken ct)
     {
+        // 這筆回報分帳出來的應收應付一起作廢（§14）
+        var (debts, _) = await DebtMath.LoadAsync(db, userId, ct);
+        foreach (var d in debts.Where(d => d.SourceEntryId == entryId)) await DebtMath.VoidAsync(db, userId, d, clock.UtcNow, ct);
+
         // 預約因為這筆回報而關閉的罐子重新打開
         foreach (var jar in await db.Jars.Where(j => j.UserId == userId && j.ClosedByEntryId == entryId).ToListAsync(ct))
         {

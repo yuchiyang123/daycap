@@ -125,6 +125,85 @@ public sealed class AccountTests : IDisposable
         return (bank, card, period.Id);
     }
 
+    private async Task<decimal> ExpectedToday(int bank, int card) =>
+        (await _accounts.PreviewReconciliationAsync("u", new CreateReconciliationRequest(_clock.Current, [new(bank, 0), new(card, 0)], true, null))).Expected;
+
+    private async Task<int> EnvelopeCategory() => (await _periods.GetCurrentAsync("u")).Categories.First(c => c.Mode == BudgetMode.Envelope).CategoryId;
+
+    [Fact]
+    public async Task Paying_for_a_friend_counts_only_my_share_and_the_rest_is_a_receivable()
+    {
+        var (bank, card, periodId) = await WithBaseline();
+        var debts = new DebtService(_db, _settings, _clock);
+        var before = await ExpectedToday(bank, card);
+        var balanceBefore = (await _accounts.BalancesAsync("u"))[bank];
+
+        var view = await _entries.CreateAsync("u", periodId, new CreateEntryRequest(_clock.Current, await EnvelopeCategory(), null,
+            EntryInputMode.Actual, 400, true, "晚餐", null, AccountId: bank, Split: new SplitRequest(SplitKind.IPaid, "小明", 800)));
+
+        Assert.Equal(400, view.Entries.Single().Actual); // 預算只扣我的份
+        var list = await debts.ListAsync("u");
+        Assert.Equal(400, list.ReceivableTotal);
+        Assert.Equal(balanceBefore - 800, (await _accounts.BalancesAsync("u"))[bank]); // 銀行實際出去 800
+        Assert.Equal(before - 800, await ExpectedToday(bank, card)); // 對帳也知道 800 出去了，不會變成沒交代的差異
+
+        // 還錢：應收清掉、銀行 +400，預算不動
+        var pool = (await _periods.GetAsync("u", periodId)).Pool.Balance;
+        list = await debts.SettleAsync("u", list.Debts.Single().Id, new SettleDebtRequest(400, bank, null));
+        Assert.Equal(0, list.ReceivableTotal);
+        Assert.Equal(balanceBefore - 400, (await _accounts.BalancesAsync("u"))[bank]);
+        Assert.Equal(pool, (await _periods.GetAsync("u", periodId)).Pool.Balance);
+    }
+
+    [Fact]
+    public async Task Someone_paying_for_me_is_a_payable_and_my_accounts_do_not_move_until_I_repay()
+    {
+        var (bank, card, periodId) = await WithBaseline();
+        var debts = new DebtService(_db, _settings, _clock);
+        var before = await ExpectedToday(bank, card);
+        var balanceBefore = (await _accounts.BalancesAsync("u"))[bank];
+
+        await _entries.CreateAsync("u", periodId, new CreateEntryRequest(_clock.Current, await EnvelopeCategory(), null,
+            EntryInputMode.Actual, 300, true, "電影", null, AccountId: bank, Split: new SplitRequest(SplitKind.TheyPaid, "小華", null)));
+
+        Assert.Equal(300, (await debts.ListAsync("u")).PayableTotal);
+        Assert.Equal(balanceBefore, (await _accounts.BalancesAsync("u"))[bank]); // 錢沒從我的帳戶出去
+        Assert.Equal(before, await ExpectedToday(bank, card));
+
+        var list = await debts.ListAsync("u");
+        await debts.SettleAsync("u", list.Debts.Single().Id, new SettleDebtRequest(300, bank, null));
+        Assert.Equal(balanceBefore - 300, (await _accounts.BalancesAsync("u"))[bank]);
+        Assert.Equal(before - 300, await ExpectedToday(bank, card));
+    }
+
+    [Fact]
+    public async Task Deleting_the_report_voids_its_split()
+    {
+        var (bank, _, periodId) = await WithBaseline();
+        var debts = new DebtService(_db, _settings, _clock);
+        var view = await _entries.CreateAsync("u", periodId, new CreateEntryRequest(_clock.Current, await EnvelopeCategory(), null,
+            EntryInputMode.Actual, 400, true, null, null, AccountId: bank, Split: new SplitRequest(SplitKind.IPaid, "小明", 800)));
+
+        await _entries.DeleteAsync("u", periodId, view.Entries.Single().Id);
+
+        Assert.Empty((await debts.ListAsync("u")).Debts);
+    }
+
+    /// <summary>回歸：刪掉有記付款帳戶的回報後，帳戶餘額要回來（作廢紀錄不帶 AccountId，以前被漏掉）。</summary>
+    [Fact]
+    public async Task Deleting_a_report_paid_from_an_account_restores_the_balance()
+    {
+        var (bank, _, periodId) = await WithBaseline();
+        var balance = (await _accounts.BalancesAsync("u"))[bank];
+        var view = await _entries.CreateAsync("u", periodId, new CreateEntryRequest(_clock.Current, await EnvelopeCategory(), null,
+            EntryInputMode.Actual, 500, true, null, null, AccountId: bank));
+        Assert.Equal(balance - 500, (await _accounts.BalancesAsync("u"))[bank]);
+
+        await _entries.DeleteAsync("u", periodId, view.Entries.Single().Id);
+
+        Assert.Equal(balance, (await _accounts.BalancesAsync("u"))[bank]);
+    }
+
     [Fact]
     public async Task Balance_higher_than_expected_goes_to_the_pool()
     {

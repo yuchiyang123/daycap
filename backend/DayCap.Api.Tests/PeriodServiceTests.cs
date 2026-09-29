@@ -393,7 +393,8 @@ public sealed class TestClock(DateOnly today) : IAppClock
     public DateOnly Current
     {
         get => _current;
-        set { _current = value; _ticks = 0; }
+        // 換日期時不歸零：回到同一天時，之後的紀錄一定比之前的晚（登錄順序要可靠）
+        set => _current = value;
     }
 
     public DateTime UtcNow => Current.ToDateTime(new TimeOnly(4, 0), DateTimeKind.Utc).AddMilliseconds(++_ticks);

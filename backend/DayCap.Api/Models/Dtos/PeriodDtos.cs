@@ -136,7 +136,9 @@ public record CreateEntryRequest(
     // 從罐子付（§11.2）：額外花費才可以
     int? JarId = null,
     // 類別細項（§13）
-    string? SubItem = null);
+    string? SubItem = null,
+    // 分帳（§14）
+    SplitRequest? Split = null);
 
 /// <summary>回報時順便把它登記成訂閱：下個週期起變成固定支出。</summary>
 public record SubscriptionRequest(string Name, int TargetCategoryId, BillingCycle Cycle, int? DueDay);

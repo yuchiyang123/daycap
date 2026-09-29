@@ -47,8 +47,8 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
         var cardIds = accounts.Where(a => IsLiability(a.Type)).Select(a => a.Id).ToHashSet();
         var cardSpend = current is null
             ? []
-            : (await db.Entries.Where(e => e.PeriodId == current.Id && e.AccountId != null).ToListAsync(ct)).Active()
-                .Where(e => cardIds.Contains(e.AccountId!.Value) && e.InputMode == EntryInputMode.Actual)
+            : (await db.Entries.Where(e => e.PeriodId == current.Id && (e.AccountId != null || e.ReplacesId != null)).ToListAsync(ct)).Active()
+                .Where(e => e.AccountId != null && cardIds.Contains(e.AccountId!.Value) && e.InputMode == EntryInputMode.Actual)
                 .GroupBy(e => e.AccountId!.Value).ToDictionary(g => g.Key, g => g.Sum(e => e.InputAmount));
 
         var views = accounts.Where(a => !a.IsArchived).Select(a =>
@@ -141,8 +141,11 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
         var transfers = (await db.AccountTransfers.Where(t => t.UserId == userId).ToListAsync(ct)).Active();
         var adjustments = (await db.AssetAdjustments.Where(a => a.UserId == userId).ToListAsync(ct)).Active();
         var periodIds = await db.Periods.Where(p => p.UserId == userId).Select(p => p.Id).ToListAsync(ct);
-        var paidEntries = (await db.Entries.Where(e => periodIds.Contains(e.PeriodId) && e.AccountId != null).ToListAsync(ct)).Active()
-            .Where(e => e.InputMode == EntryInputMode.Actual).ToList();
+        // 作廢 / 取代的紀錄不帶 AccountId，要一起讀進來 Active() 才判斷得出哪些已經不算了
+        var paidEntries = (await db.Entries.Where(e => periodIds.Contains(e.PeriodId) && (e.AccountId != null || e.ReplacesId != null)).ToListAsync(ct)).Active()
+            .Where(e => e.AccountId != null && e.InputMode == EntryInputMode.Actual).ToList();
+        var (debts, settlements) = await DebtMath.LoadAsync(db, userId, ct);
+        var debtKinds = debts.ToDictionary(d => d.Id, d => d.Kind);
 
         var result = new Dictionary<int, decimal>();
         foreach (var (id, account) in accounts)
@@ -167,6 +170,16 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
             foreach (var e in paidEntries.Where(e => e.AccountId == id && After(e.Date, e.CreatedAt)))
             {
                 delta += liability ? e.InputAmount : -e.InputAmount;
+            }
+            // 分帳（§14）：代墊多付的錢從帳戶出去；收回應收進帳；還應付出帳
+            foreach (var d in debts.Where(d => d.AccountId == id && d.Kind == DebtKind.Receivable && After(d.Date, d.CreatedAt)))
+            {
+                delta += liability ? d.Amount : -d.Amount;
+            }
+            foreach (var s in settlements.Where(s => s.AccountId == id && debtKinds.ContainsKey(s.DebtId) && After(s.Date, s.CreatedAt)))
+            {
+                var incoming = debtKinds[s.DebtId] == DebtKind.Receivable;
+                delta += (incoming ? 1 : -1) * (liability ? -s.Amount : s.Amount);
             }
             result[id] = baseBalance + delta;
         }

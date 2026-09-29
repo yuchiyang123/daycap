@@ -3,7 +3,8 @@ import { computed, ref } from 'vue'
 import Sheet from './Sheet.vue'
 import ImpactPreview from './ImpactPreview.vue'
 import ShortfallPicker from './ShortfallPicker.vue'
-import type { ShortfallChoice } from '../api/types'
+import SplitField from './SplitField.vue'
+import type { ShortfallChoice, SplitRequest } from '../api/types'
 import { createEntry, deleteEntry, getAccounts } from '../api/endpoints'
 import type { AccountView, CreateEntryRequest, SlotView } from '../api/types'
 import { onMounted } from 'vue'
@@ -29,6 +30,7 @@ const saving = ref(false)
 const error = ref<string | null>(null)
 const payAccounts = ref<AccountView[]>([])
 const accountId = ref<number | null>(null)
+const split = ref<SplitRequest | null>(null)
 onMounted(async () => {
   payAccounts.value = (await getAccounts().catch(() => ({ accounts: [] as AccountView[] }))).accounts
 })
@@ -73,7 +75,7 @@ async function submit() {
   saving.value = true
   error.value = null
   try {
-    setPeriod(await createEntry(period.value.id, { ...request.value, accountId: actualMode.value ? accountId.value : null, ...shortfallExtra() }))
+    setPeriod(await createEntry(period.value.id, { ...request.value, accountId: actualMode.value ? accountId.value : null, split: actualMode.value ? split.value : null, ...shortfallExtra() }))
     emit('close')
   } catch (e) {
     error.value = (e as Error).message
@@ -152,6 +154,8 @@ async function clearReport() {
           </select>
         </label>
       </div>
+
+      <SplitField v-if="actualMode" v-model="split" :my-share="parsed" />
 
       <ImpactPreview :preview="preview" :loading="loading" />
       <ShortfallPicker

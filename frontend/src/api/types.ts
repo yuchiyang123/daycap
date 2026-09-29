@@ -426,6 +426,8 @@ export interface CreateEntryRequest {
   jarId?: number | null
   /** 類別細項（§13） */
   subItem?: string | null
+  /** 分帳（§14） */
+  split?: SplitRequest | null
 }
 
 export interface EntryPreview {
@@ -615,4 +617,31 @@ export interface SubItemView {
   cap: number | null
   spent: number
   over: number
+}
+
+// ---- 應收應付（§14）----
+export type SplitKind = 'IPaid' | 'TheyPaid'
+export interface SplitRequest {
+  kind: SplitKind
+  counterparty: string
+  total: number | null
+}
+export type DebtKind = 'Receivable' | 'Payable'
+export interface DebtView {
+  id: number
+  kind: DebtKind
+  counterparty: string
+  amount: number
+  settled: number
+  outstanding: number
+  date: string
+  note: string | null
+  accountId: number | null
+  sourceEntryId: number | null
+}
+export interface DebtsView {
+  debts: DebtView[]
+  receivableTotal: number
+  payableTotal: number
+  people: { counterparty: string; receivable: number; payable: number; net: number }[]
 }

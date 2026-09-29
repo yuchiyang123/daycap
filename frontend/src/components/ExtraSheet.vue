@@ -3,7 +3,8 @@ import { computed, ref, watch } from 'vue'
 import Sheet from './Sheet.vue'
 import ImpactPreview from './ImpactPreview.vue'
 import ShortfallPicker from './ShortfallPicker.vue'
-import type { ShortfallChoice, JarView } from '../api/types'
+import SplitField from './SplitField.vue'
+import type { ShortfallChoice, JarView, SplitRequest } from '../api/types'
 import { createEntry, getAccounts, getJars } from '../api/endpoints'
 import type { AccountView } from '../api/types'
 import { onMounted } from 'vue'
@@ -39,6 +40,7 @@ const accountId = ref<number | null>(null)
 // 從罐子付（§11.2）：預約、年繳到期時用
 const jars = ref<JarView[]>([])
 const jarId = ref<number | null>(null)
+const split = ref<SplitRequest | null>(null)
 // 類別細項（§13）：這個分類設定過的細項當建議，也可以臨時打新的
 const subItem = ref('')
 const subSuggestions = computed(() => (period.value.subItems ?? []).filter((s) => s.categoryId === categoryId.value))
@@ -94,6 +96,7 @@ async function submit() {
       ...request.value,
       subscription: isSub.value ? { name: subName.value.trim(), targetCategoryId: subTarget.value, cycle: subCycle.value, dueDay: null } : null,
       accountId: accountId.value,
+      split: split.value,
       ...shortfallExtra(),
     }
     setPeriod(await createEntry(period.value.id, body))
@@ -201,6 +204,8 @@ async function submit() {
           </label>
         </div>
       </div>
+
+      <SplitField v-model="split" :my-share="request?.amount ?? null" />
 
       <ImpactPreview :preview="preview" :loading="loading" :envelope="isEnvelope" />
       <ShortfallPicker

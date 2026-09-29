@@ -22,6 +22,8 @@ import type {
   SettingsView,
   SettingsEstimate,
   MonthEndReport,
+  DebtsView,
+  DebtKind,
   JarView,
   SaveJarRequest,
   OnboardingState,
@@ -150,3 +152,11 @@ export const updateJar = (id: number, body: SaveJarRequest) => api<JarView[]>(`/
 /** amount > 0 從待分配池存進罐子；< 0 拿回池子 */
 export const moveJar = (id: number, amount: number) => api<JarView[]>(`/api/jars/${id}/move`, { method: 'POST', body: { amount } })
 export const closeJar = (id: number) => api<JarView[]>(`/api/jars/${id}/close`, { method: 'POST' })
+
+// ---- 應收應付（§14）----
+export const getDebts = () => api<DebtsView>('/api/debts')
+export const createDebt = (body: { kind: DebtKind; counterparty: string; amount: number; date: string | null; accountId: number | null; note: string | null }) =>
+  api<DebtsView>('/api/debts', { method: 'POST', body })
+export const settleDebt = (id: number, body: { amount: number; accountId: number | null; date: string | null }) =>
+  api<DebtsView>(`/api/debts/${id}/settle`, { method: 'POST', body })
+export const deleteDebt = (id: number) => api<DebtsView>(`/api/debts/${id}`, { method: 'DELETE' })

@@ -166,6 +166,7 @@ public class PeriodService(
 
         var types = await db.CashAccounts.AsNoTracking().Where(a => a.UserId == period.UserId).ToDictionaryAsync(a => a.Id, a => a.Type, ct);
         var adjustments = (await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == period.UserId).ToListAsync(ct)).Active();
+        var (debts, settlements) = await DebtMath.LoadAsync(db, period.UserId, ct);
 
         List<ReconDiff> diffs = [];
         for (var iteration = 0; iteration < 5; iteration++)
@@ -176,7 +177,9 @@ public class PeriodService(
                 var prev = full.LastOrDefault(x => x.Id != r.Id && (x.Date < r.Date || (x.Date == r.Date && x.CreatedAt < r.CreatedAt)));
                 if (prev is null || prev.Date < period.StartDate.AddDays(-100)) continue; // 沒有基準：這次只當基準
                 var flows = await FlowsAsync(period, view, prev.Date, r.Date, cache, depth, ct)
-                            + adjustments.Where(a => a.Date > prev.Date && a.Date <= r.Date).Sum(a => a.Amount);
+                            + adjustments.Where(a => a.Date > prev.Date && a.Date <= r.Date).Sum(a => a.Amount)
+                            // 分帳的應收應付（§14）：代墊、收回、還款不是沒交代的差異
+                            + DebtMath.NetFlow(debts, settlements, d => d > prev.Date && d <= r.Date);
                 next.Add(new ReconDiff(r.Id, r.Date, r.CreatedAt,
                     AccountService.Net(prev, types) + flows, AccountService.Net(r, types), r.UsePool));
             }
