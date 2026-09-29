@@ -45,6 +45,8 @@ export async function login(userName: string, password: string): Promise<void> {
 }
 
 export async function logout(): Promise<void> {
+  // 離線快取（§21.4）裡有本期資料：登出就清掉
+  await caches?.delete('daycap-v1').catch(() => undefined)
   await ensureCsrf()
   await fetch('/api/auth/logout', {
     method: 'POST',

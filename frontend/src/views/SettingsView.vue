@@ -4,6 +4,7 @@ import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import MealTable from '../components/MealTable.vue'
 import PushSettings from '../components/PushSettings.vue'
 import SubItemsEditor from '../components/SubItemsEditor.vue'
+import TrustSettings from '../components/TrustSettings.vue'
 import { watch } from 'vue'
 import { estimateSettings } from '../api/endpoints'
 import type { PercentBase, SettingsEstimate } from '../api/types'
@@ -600,6 +601,11 @@ async function signOut() {
       <section class="section">
         <h2 class="section-title">每晚通知</h2>
         <PushSettings />
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">資料與安全</h2>
+        <TrustSettings />
       </section>
 
       <section class="section">

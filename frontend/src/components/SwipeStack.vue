@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { createEntry, deleteEntry } from '../api/endpoints'
 import type { SlotView } from '../api/types'
 import { setPeriod, store } from '../lib/store'
+import { enqueue, isNetworkError } from '../lib/offline'
 import { money, shortDate } from '../lib/format'
 
 /**
@@ -130,16 +131,27 @@ function showToast(text: string, entryIds: number[], keys: string[]) {
 }
 
 async function report(card: Card): Promise<number | null> {
-  const view = await createEntry(period.value.id, {
+  const body = {
     date: card.date,
     categoryId: card.slot.categoryId,
     slotId: card.slot.slotId,
-    inputMode: 'Actual',
+    inputMode: 'Actual' as const,
     amount: card.slot.planned,
     usePool: true,
     note: null,
     subscription: null,
-  })
+  }
+  let view
+  try {
+    view = await createEntry(period.value.id, body)
+  } catch (e) {
+    if (!isNetworkError(e)) throw e
+    // 離線（§21.4）：先排隊，卡片先拿掉，連線後自動送出
+    enqueue(period.value.id, body, `${card.slot.name} ${money(card.slot.planned)}`)
+    skipped.value.add(card.key)
+    skipped.value = new Set(skipped.value)
+    return null
+  }
   setPeriod(view)
   return view.days.find((d) => d.date === card.date)?.slots.find((s) => s.slotId === card.slot.slotId && s.categoryId === card.slot.categoryId)?.entryId ?? null
 }

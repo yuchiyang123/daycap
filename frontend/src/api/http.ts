@@ -71,6 +71,17 @@ export async function api<T>(url: string, opts: RequestOptions = {}): Promise<T>
   }
 
   let res = await send()
+  // §21.3：這台裝置在別的地方被登出了 → 連 Mini-SSO 的 refresh token 一起登出，不要再換新 token
+  if (res.status === 401 && res.headers.get('X-DayCap-Revoked') === '1') {
+    await ensureCsrf()
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': readCookie('XSRF-TOKEN') ?? '' },
+    }).catch(() => undefined)
+    if (!window.location.pathname.startsWith('/login')) window.location.href = '/login?revoked=1'
+    throw new ApiError(401, '這台裝置已經被登出。')
+  }
   if (res.status === 401 && (await refreshSession())) res = await send()
   if (res.status === 403 && mutating) {
     await ensureCsrf(true)

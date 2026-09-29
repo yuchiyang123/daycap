@@ -43,6 +43,8 @@ builder.Services.AddScoped<DayCap.Api.Services.Push.IPushService, DayCap.Api.Ser
 builder.Services.AddScoped<IJarService, JarService>();
 builder.Services.AddScoped<IDebtService, DebtService>();
 builder.Services.AddScoped<IInstallmentService, InstallmentService>();
+builder.Services.AddScoped<ISessionService, SessionService>();
+builder.Services.AddScoped<IUserDataService, UserDataService>();
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<DayCap.Api.Services.Push.NightlyPushWorker>();
 
 builder.Services.AddHttpClient(CalendarService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
@@ -99,7 +101,40 @@ else
                 {
                     if (context.Request.Cookies.TryGetValue("token", out var token)) context.Token = token;
                     return Task.CompletedTask;
-                }
+                },
+                // §21.3：用 DayCap 自己的裝置 cookie 記下登入中的裝置；被撤銷的裝置、或在「登出其他所有裝置」之前發的 token 拒絕。
+                // 被拒的回應帶 X-DayCap-Revoked，前端會呼叫 Mini-SSO 登出（連 refresh token 一起撤銷）。
+                OnTokenValidated = async context =>
+                {
+                    var http = context.HttpContext;
+                    if (context.Principal is null) return;
+                    var userId = DayCap.Api.Common.ClaimsPrincipalExtensions.GetUserId(context.Principal);
+                    if (!context.Request.Cookies.TryGetValue(SessionService.DeviceCookie, out var device) || device.Length is < 16 or > 64)
+                    {
+                        device = SessionService.NewDeviceId();
+                        http.Response.Cookies.Append(SessionService.DeviceCookie, device, new CookieOptions
+                        {
+                            HttpOnly = true, Secure = context.Request.IsHttps, SameSite = SameSiteMode.Lax, Path = "/",
+                            MaxAge = TimeSpan.FromDays(400), IsEssential = true,
+                        });
+                    }
+                    http.Items[SessionService.DeviceCookie] = device;
+                    var issued = (context.SecurityToken as Microsoft.IdentityModel.JsonWebTokens.JsonWebToken)?.IssuedAt;
+                    var sessions = http.RequestServices.GetRequiredService<ISessionService>();
+                    var ok = await sessions.CheckAsync(userId, device, issued is { } i && i > DateTime.MinValue ? i : null,
+                        context.Request.Headers.UserAgent.ToString(), http.RequestAborted);
+                    if (!ok)
+                    {
+                        http.Items["daycap.revoked"] = true;
+                        http.Response.Cookies.Delete(SessionService.DeviceCookie, new CookieOptions { Path = "/" });
+                        context.Fail("這台裝置已經被登出。");
+                    }
+                },
+                OnChallenge = context =>
+                {
+                    if (context.HttpContext.Items.ContainsKey("daycap.revoked")) context.Response.Headers["X-DayCap-Revoked"] = "1";
+                    return Task.CompletedTask;
+                },
             };
         });
 }

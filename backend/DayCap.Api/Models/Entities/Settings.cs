@@ -60,6 +60,9 @@ public class UserProfile
 
     public DateOnly? LastPushOn { get; set; }
 
+    /// <summary>「登出其他所有裝置」的時間（§21.3）：這之前發的 token 都不能用（按按鈕的那個除外）。</summary>
+    public DateTime? TokensValidAfter { get; set; }
+
     // ---- 舊欄位（已不使用）：改存在設定版本裡，保留給舊資料匯入 ----
     public int MonthlyIncome { get; set; }
 

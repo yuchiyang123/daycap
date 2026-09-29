@@ -6,6 +6,9 @@ import NotStarted from './components/NotStarted.vue'
 import NotificationBell from './components/NotificationBell.vue'
 import NotificationPopup from './components/NotificationPopup.vue'
 import { logicalToday } from './lib/format'
+import LockScreen from './components/LockScreen.vue'
+import { lockState } from './lib/applock'
+import { dismissFailed, offlineState } from './lib/offline'
 
 const route = useRoute()
 const isPublic = computed(() => !!route.meta.public)
@@ -48,6 +51,15 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
       </div>
     </header>
 
+    <div v-if="!offlineState.online || offlineState.pending" class="offline-bar" role="status">
+      {{ !offlineState.online ? '離線中：滑卡確認會先記在這台，連線後自動送出。' : '' }}
+      <template v-if="offlineState.pending">還有 {{ offlineState.pending }} 筆等著送出。</template>
+    </div>
+    <div v-if="offlineState.failed.length" class="offline-bar bad-bar" role="alert">
+      離線時記的 {{ offlineState.failed.length }} 筆沒送出：{{ offlineState.failed.map((f) => `${f.label}（${f.message}）`).join('、') }}
+      <button type="button" class="btn quiet sm" @click="dismissFailed">知道了</button>
+    </div>
+
     <main>
       <div v-if="needsPeriod && store.periodError" class="page">
         <p class="error-box">讀不到本期資料：{{ store.periodError }}</p>
@@ -66,6 +78,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
       <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="tab">{{ t.label }}</RouterLink>
     </nav>
   </template>
+  <LockScreen v-if="lockState.locked && !isPublic" />
 </template>
 
 <style scoped>
@@ -166,5 +179,14 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
     height: 2px;
     background: var(--accent);
   }
+}
+.offline-bar {
+  padding: 6px 16px;
+  font-size: 13px;
+  background: var(--sunk);
+  border-bottom: 1px solid var(--line);
+}
+.bad-bar {
+  color: var(--bad-text);
 }
 </style>
