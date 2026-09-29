@@ -479,8 +479,9 @@ async function signOut() {
               <span>用 % 計算</span>
             </label>
             <label v-if="c.usePercent !== false" class="field pct-field">
-              {{ draft.percentBase === 'AfterFixed' ? '佔扣掉固定支出後 %' : '佔收入 %' }}
+              比例 %
               <input v-model.number="c.percent" class="input compact num" inputmode="decimal" @input="touch" />
+              <span class="hint base-hint">{{ draft.percentBase === 'AfterFixed' ? '佔扣掉固定支出後' : '佔收入' }}</span>
             </label>
             <label v-else class="field pct-field">
               固定金額
@@ -518,8 +519,14 @@ async function signOut() {
             </div>
             <div v-for="(f, fi) in c.fixedItems" :key="fi" class="fx-row">
               <input v-model="f.name" class="input compact fx-name" placeholder="例如 房租" maxlength="60" aria-label="項目名稱" @input="touch" />
-              <input v-model.number="f.amount" class="input compact num fx-amt" inputmode="numeric" placeholder="金額" aria-label="金額" @input="touch" />
-              <input v-model.number="f.dueDay" class="input compact num fx-due" inputmode="numeric" placeholder="扣款日" aria-label="扣款日" @input="touch" />
+              <span class="fx-amt m-field">
+                <span class="m-lab">金額</span>
+                <input v-model.number="f.amount" class="input compact num" inputmode="numeric" placeholder="金額" aria-label="金額" @input="touch" />
+              </span>
+              <span class="fx-due m-field">
+                <span class="m-lab">每月幾號扣</span>
+                <input v-model.number="f.dueDay" class="input compact num" inputmode="numeric" placeholder="扣款日" aria-label="扣款日" @input="touch" />
+              </span>
               <div class="cycle fx-cycle">
                 <select v-model="f.cycle" class="select compact" aria-label="週期" @change="f.billingMonth ??= 1; touch()">
                   <option value="Monthly">月繳</option>
@@ -553,7 +560,7 @@ async function signOut() {
         <button type="button" class="btn add-cat" @click="addCategory">新增分類</button>
       </section>
 
-      <div class="save-bar">
+      <div v-if="dirty || savedMsg || correcting" class="save-bar">
         <div class="save-info">
           <span v-if="savedMsg" class="good">{{ savedMsg }}</span>
           <span v-else-if="dirty" class="muted">
@@ -732,6 +739,27 @@ async function signOut() {
 }
 .order {
   display: flex;
+}
+/* 手機才顯示的欄位標籤（桌機有表頭） */
+.m-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.m-field .input {
+  flex: 1;
+  min-width: 0;
+}
+.m-lab {
+  display: none;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.base-hint {
+  font-size: 11px;
+  white-space: nowrap;
 }
 .pct-row {
   display: flex;
@@ -942,6 +970,37 @@ async function signOut() {
   }
 }
 @media (max-width: 640px) {
+  /* 手機：用 % 計算一行；比例、金額一行；底線、說明一行 */
+  .m-lab {
+    display: inline;
+  }
+  .pct-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 8px 12px;
+  }
+  .pct-toggle {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+  .pct-field,
+  .floor-field {
+    width: auto;
+  }
+  .eq {
+    padding-bottom: 24px;
+  }
+  .over-msg {
+    font-size: 12px;
+  }
+  .save-bar {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .save-info > .muted {
+    display: none;
+  }
   .cat-head {
     grid-template-columns: 1fr 84px;
   }

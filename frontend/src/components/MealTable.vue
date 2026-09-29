@@ -185,11 +185,13 @@ const tweakChanges = computed(() => {
           <span class="muted until num">到 {{ slotEnd(si) }}</span>
         </span>
         <span class="st-w cell">
+          <span class="m-lab">平日</span>
           <button v-if="auto" type="button" class="nudge" :disabled="busy" aria-label="平日減" @click="nudge(s, 'w', -1)">−</button>
           <input v-model.number="s.workdayAmount" class="input compact num" inputmode="numeric" :readonly="auto" aria-label="平日金額" @input="emit('touch')" />
           <button v-if="auto" type="button" class="nudge" :disabled="busy" aria-label="平日加" @click="nudge(s, 'w', 1)">＋</button>
         </span>
         <span class="st-h cell">
+          <span class="m-lab">假日</span>
           <button v-if="auto" type="button" class="nudge" :disabled="busy" aria-label="假日減" @click="nudge(s, 'h', -1)">−</button>
           <input v-model.number="s.holidayAmount" class="input compact num" inputmode="numeric" :readonly="auto" aria-label="假日金額" @input="emit('touch')" />
           <button v-if="auto" type="button" class="nudge" :disabled="busy" aria-label="假日加" @click="nudge(s, 'h', 1)">＋</button>
@@ -300,6 +302,13 @@ const tweakChanges = computed(() => {
   flex: 1;
   min-width: 0;
 }
+.m-lab {
+  display: none;
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: 4px;
+  white-space: nowrap;
+}
 .cell .input[readonly] {
   background: var(--sunk);
 }
@@ -397,6 +406,9 @@ const tweakChanges = computed(() => {
   .st-time {
     grid-area: time;
     flex-wrap: wrap;
+  }
+  .m-lab {
+    display: inline;
   }
   .st-time .input {
     flex: 1;

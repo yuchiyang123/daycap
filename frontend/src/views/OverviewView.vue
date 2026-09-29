@@ -349,6 +349,12 @@ async function savePayday() {
   width: 28%;
   min-width: 90px;
 }
+/* 手機：用量條藏起來，表格才放得下（剩餘那欄已經看得出來） */
+@media (max-width: 520px) {
+  .meter-col {
+    display: none;
+  }
+}
 .transfer {
   display: grid;
   grid-template-columns: auto 90px 1fr auto;
