@@ -1,10 +1,19 @@
 namespace DayCap.Api.Models.Entities;
 
+/// <summary>§5.1：銀行、現金、電子支付儲值是資產；信用卡是負債（餘額＝欠多少）。</summary>
+public enum AccountType { Bank, Cash, EWallet, CreditCard }
+
+/// <summary>
+/// 帳戶。餘額不直接存：由「最近一次對帳的實際餘額」加上之後已知的移動（轉帳、繳卡費、資產加減、
+/// 有記付款帳戶的回報）推算（§2.2）。Balance 欄位是舊版直接存的數字，只在第一次換新模型時當成期初對帳。
+/// </summary>
 public class CashAccount
 {
     public int Id { get; set; }
     public string UserId { get; set; } = "";
     public string Name { get; set; } = "";
+    public AccountType Type { get; set; } = AccountType.Bank;
+    public bool IsArchived { get; set; }
     public decimal Balance { get; set; }
     public int SortOrder { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
@@ -82,6 +91,56 @@ public class AssetAdjustment : IFact
     public int? PeriodId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    public int? ReplacesId { get; set; }
+    public bool IsVoid { get; set; }
+}
+
+/// <summary>
+/// 對帳（事實，§12.1）：某一天結束時各帳戶的實際餘額。不存差額，差額由重播算。
+/// IsFull = 當時所有帳戶都有填，才能拿來和預期餘額比；只填部分帳戶（例如新增帳戶的期初餘額）只更新那些帳戶。
+/// </summary>
+public class Reconciliation : IFact
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = "";
+    public DateOnly Date { get; set; }
+    public bool IsFull { get; set; }
+
+    /// <summary>負差額（花多了）時，先從待分配池扣；不夠或不勾才攤到之後的日子。</summary>
+    public bool UsePool { get; set; } = true;
+
+    public string? Note { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? ReplacesId { get; set; }
+    public bool IsVoid { get; set; }
+
+    public List<ReconciliationLine> Lines { get; set; } = [];
+}
+
+public class ReconciliationLine
+{
+    public int Id { get; set; }
+    public int ReconciliationId { get; set; }
+    public int AccountId { get; set; }
+
+    /// <summary>資產帳戶＝餘額；信用卡＝欠款（正數）。</summary>
+    public decimal Balance { get; set; }
+}
+
+public enum TransferKind { Transfer, CardPayment }
+
+/// <summary>帳戶之間的移動（事實）：互轉、繳卡費。都不算花費，淨資產不變（§5）。</summary>
+public class AccountTransfer : IFact
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = "";
+    public DateOnly Date { get; set; }
+    public TransferKind Kind { get; set; }
+    public int FromAccountId { get; set; }
+    public int ToAccountId { get; set; }
+    public decimal Amount { get; set; }
+    public string? Note { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int? ReplacesId { get; set; }
     public bool IsVoid { get; set; }
 }

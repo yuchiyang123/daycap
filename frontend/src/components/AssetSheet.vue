@@ -2,8 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import Sheet from './Sheet.vue'
-import { addAssetAdjustment, getAssets } from '../api/endpoints'
-import type { CashAccountDto } from '../api/types'
+import { addAssetAdjustment, getAccounts } from '../api/endpoints'
+import type { AccountView } from '../api/types'
 import { money, toIso } from '../lib/format'
 
 /**
@@ -12,7 +12,7 @@ import { money, toIso } from '../lib/format'
  */
 const emit = defineEmits<{ close: []; saved: [] }>()
 
-const accounts = ref<CashAccountDto[]>([])
+const accounts = ref<AccountView[]>([])
 const accountId = ref<number>(0)
 const dir = ref<'out' | 'in'>('out')
 const amount = ref('')
@@ -23,7 +23,8 @@ const error = ref<string | null>(null)
 const loaded = ref(false)
 
 onMounted(async () => {
-  accounts.value = (await getAssets()).cashAccounts
+  // 信用卡不能直接加減：用「繳卡費」或回報時選信用卡付款
+  accounts.value = (await getAccounts()).accounts.filter((a) => a.type !== 'CreditCard')
   accountId.value = accounts.value[0]?.id ?? 0
   loaded.value = true
 })

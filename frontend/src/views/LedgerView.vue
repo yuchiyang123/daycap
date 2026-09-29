@@ -3,9 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 import ExtraSheet from '../components/ExtraSheet.vue'
 import AssetSheet from '../components/AssetSheet.vue'
 import IncomeSheet from '../components/IncomeSheet.vue'
+import TransferSheet from '../components/TransferSheet.vue'
+import ReconcileSheet from '../components/ReconcileSheet.vue'
 import AllocateSheet from '../components/AllocateSheet.vue'
-import { deleteAssetAdjustment, deleteEntry, listAssetAdjustments } from '../api/endpoints'
-import type { AssetAdjustmentView } from '../api/types'
+import { deleteAssetAdjustment, deleteEntry, deleteReconciliation, deleteTransfer2, listAssetAdjustments, listReconciliations, listTransfers } from '../api/endpoints'
+import type { AssetAdjustmentView, ReconciliationSummary, TransferView } from '../api/types'
+import { loadCurrentPeriod } from '../lib/store'
 import { store, setPeriod } from '../lib/store'
 import { dayLabel, money, signed } from '../lib/format'
 
@@ -17,12 +20,21 @@ import { dayLabel, money, signed } from '../lib/format'
  */
 const period = computed(() => store.period!)
 const assetRows = ref<AssetAdjustmentView[]>([])
+const transferRows = ref<TransferView[]>([])
+const reconRows = ref<ReconciliationSummary[]>([])
 const filter = ref<'all' | 'spend' | 'asset'>('all')
-const adding = ref<'spend' | 'asset' | 'income' | 'allocate' | null>(null)
+const adding = ref<'spend' | 'asset' | 'income' | 'allocate' | 'transfer' | 'reconcile' | null>(null)
 const confirmId = ref<string | null>(null)
 
 async function loadAssets() {
-  assetRows.value = await listAssetAdjustments(period.value.startDate, period.value.endDate)
+  const [a, t, r] = await Promise.all([
+    listAssetAdjustments(period.value.startDate, period.value.endDate),
+    listTransfers(period.value.startDate, period.value.endDate),
+    listReconciliations(),
+  ])
+  assetRows.value = a
+  transferRows.value = t
+  reconRows.value = r.filter((x) => x.date >= period.value.startDate && x.date <= period.value.endDate)
 }
 onMounted(loadAssets)
 
@@ -71,6 +83,38 @@ const rows = computed<Row[]>(() => {
               await loadAssets()
             }
           : undefined,
+    })
+  }
+  for (const t of transferRows.value) {
+    out.push({
+      key: `t${t.id}`,
+      date: t.date,
+      title: t.note || (t.kind === 'CardPayment' ? '繳卡費' : '轉帳'),
+      sub: `${t.kind === 'CardPayment' ? '繳卡費' : '互轉'}・${t.fromName} → ${t.toName}・不算花費`,
+      amount: t.amount,
+      kind: 'asset',
+      tone: '',
+      del: async () => {
+        await deleteTransfer2(t.id)
+        await loadAssets()
+      },
+    })
+  }
+  for (const r of reconRows.value) {
+    const rv = period.value.reconciliations.find((x) => x.id === r.id)
+    out.push({
+      key: `r${r.id}`,
+      date: r.date,
+      title: r.note || (r.isFull ? '對帳' : '帳戶期初餘額'),
+      sub: rv ? `對帳・預期 ${money(rv.expected)}・沒交代 ${signed(rv.diff)}` : `對帳・淨額 ${money(r.net)}${r.isFull ? '（基準）' : ''}`,
+      amount: rv ? rv.diff : 0,
+      kind: 'asset',
+      tone: rv && rv.diff < 0 ? 'bad' : rv && rv.diff > 0 ? 'good' : '',
+      del: async () => {
+        await deleteReconciliation(r.id)
+        await loadAssets()
+        await loadCurrentPeriod(true)
+      },
     })
   }
   for (const i of period.value.incomeAdjustments) {
@@ -124,6 +168,14 @@ async function remove(r: Row) {
       <button class="btn add" @click="adding = 'asset'">
         <b>資產加減</b>
         <span>直接動存款帳戶，不影響預算</span>
+      </button>
+      <button class="btn add" @click="adding = 'transfer'">
+        <b>轉帳・繳卡費</b>
+        <span>帳戶之間的移動，不算花費</span>
+      </button>
+      <button class="btn add" @click="adding = 'reconcile'">
+        <b>對帳</b>
+        <span>填實際餘額，補回沒回報的差額</span>
       </button>
     </div>
 
@@ -180,13 +232,15 @@ async function remove(r: Row) {
     <AssetSheet v-if="adding === 'asset'" @close="adding = null" @saved="loadAssets" />
     <IncomeSheet v-if="adding === 'income'" @close="adding = null" @allocate="adding = 'allocate'" />
     <AllocateSheet v-if="adding === 'allocate'" @close="adding = null" />
+    <TransferSheet v-if="adding === 'transfer'" @close="adding = null" @saved="loadAssets" />
+    <ReconcileSheet v-if="adding === 'reconcile'" @close="adding = null" @saved="loadAssets" />
   </div>
 </template>
 
 <style scoped>
 .adds {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: 10px;
 }
 .add {

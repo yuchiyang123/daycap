@@ -6,6 +6,15 @@ namespace DayCap.Api.Services;
 public record DayInfo(bool IsHoliday, string? Name);
 
 /// <summary>
+/// 一次完整對帳算出的「沒交代的差異」（§12.1）：實際淨額 − 預期淨額。由服務層算好傳進來，
+/// 引擎在它的登錄時間點重播：正的進待分配池；負的照超支規則（先池、再攤到之後所有每日類時段）。
+/// </summary>
+public record ReconDiff(int Id, DateOnly Date, DateTime CreatedAt, decimal Expected, decimal Actual, bool UsePool)
+{
+    public decimal Diff => Actual - Expected;
+}
+
+/// <summary>
 /// 純計算：拿一期的計畫（<see cref="PeriodPlan"/>，由設定版本算出）+ 這期所有「有效的事實」，
 /// 照登錄時間重播，算出每天每個時段的有效額度、待定區流水與餘額、各分類花費。
 /// 沒有 I/O，衍生數字不落地（§2.2）。
@@ -27,7 +36,8 @@ public static class BudgetEngine
         PeriodPlan plan,
         DateOnly today,
         Func<DateTime, DateOnly> toLogicalDate,
-        IReadOnlyDictionary<DateOnly, DayInfo> days)
+        IReadOnlyDictionary<DateOnly, DayInfo> days,
+        IReadOnlyList<ReconDiff>? reconDiffs = null)
     {
         var categories = plan.Categories.OrderBy(c => c.SortOrder).ToList();
         var categoryById = categories.ToDictionary(c => c.CategoryId);
@@ -80,14 +90,22 @@ public static class BudgetEngine
         var envelopeSpent = categories.Where(c => c.Mode == BudgetMode.Envelope).ToDictionary(c => c.CategoryId, _ => 0m);
         var entryViews = new Dictionary<int, EntryView>();
 
-        var events = entries.Select(e => new Event(e.CreatedAt, 0, e.Id, e, null, null))
-            .Concat(transfers.Select(t => new Event(t.CreatedAt, 1, t.Id, null, t, null)))
-            .Concat(plan.Lowerings.Select((l, i) => new Event(l.AsOfUtc, 2, i, null, null, l)))
+        var events = entries.Select(e => new Event(e.CreatedAt, 0, e.Id, e, null, null, null))
+            .Concat(transfers.Select(t => new Event(t.CreatedAt, 1, t.Id, null, t, null, null)))
+            .Concat(plan.Lowerings.Select((l, i) => new Event(l.AsOfUtc, 2, i, null, null, l, null)))
+            .Concat((reconDiffs ?? []).Select(r => new Event(r.CreatedAt, 3, r.Id, null, null, null, r)))
             .OrderBy(x => x.At).ThenBy(x => x.Order).ThenBy(x => x.Id)
             .ToList();
+        var reconViews = new List<ReconciliationView>();
 
         foreach (var ev in events)
         {
+            if (ev.Recon is { } rd)
+            {
+                reconViews.Add(ApplyReconciliation(rd, categories, allocations, effective, reportedKeys, toLogicalDate, ref pool, lines));
+                continue;
+            }
+
             if (ev.Lowering is { } low)
             {
                 var key = (low.Date, low.SlotId);
@@ -230,10 +248,63 @@ public static class BudgetEngine
             plan.FixedCharges.OrderBy(f => f.DueDate).ThenBy(f => f.Name)
                 .Select(f => new FixedChargeView(f.FixedItemId, f.CategoryId, f.Name, f.Amount, f.DueDate, f.IsSubscription)).ToList(),
             transfers.OrderByDescending(t => t.CreatedAt)
-                .Select(t => new PoolTransferView(t.Id, t.Date, t.Amount, t.Note, t.CategoryId)).ToList());
+                .Select(t => new PoolTransferView(t.Id, t.Date, t.Amount, t.Note, t.CategoryId)).ToList(),
+            reconViews);
     }
 
-    private sealed record Event(DateTime At, int Order, int Id, Entry? Entry, PoolTransfer? Transfer, TodayLowering? Lowering);
+    private sealed record Event(DateTime At, int Order, int Id, Entry? Entry, PoolTransfer? Transfer, TodayLowering? Lowering, ReconDiff? Recon);
+
+    private static ReconciliationView ApplyReconciliation(
+        ReconDiff r,
+        List<PeriodCategory> categories,
+        List<DayAllocation> allocations,
+        Dictionary<(DateOnly, int), decimal> effective,
+        HashSet<(DateOnly, int)> reportedKeys,
+        Func<DateTime, DateOnly> toLogicalDate,
+        ref decimal pool,
+        List<PoolLine> lines)
+    {
+        var diff = r.Diff;
+        decimal fromPool = 0, spread = 0, unabsorbed = 0;
+        if (diff > 0)
+        {
+            pool += diff;
+            lines.Add(new PoolLine(r.Date, diff, "Reconcile", "對帳：實際餘額比預期多", null, null));
+        }
+        else if (diff < 0)
+        {
+            var over = -diff;
+            if (r.UsePool)
+            {
+                fromPool = Math.Min(over, Math.Max(pool, 0));
+                if (fromPool > 0)
+                {
+                    pool -= fromPool;
+                    lines.Add(new PoolLine(r.Date, -fromPool, "Reconcile", "對帳：沒交代的差異", null, null));
+                }
+            }
+            var rest = over - fromPool;
+            if (rest > 0)
+            {
+                var daily = categories.Where(c => c.Mode == BudgetMode.Daily).Select(c => c.CategoryId).ToHashSet();
+                var cutoff = Max(r.Date, toLogicalDate(r.CreatedAt));
+                var targets = allocations
+                    .Where(a => daily.Contains(a.CategoryId) && a.Date > cutoff
+                                && !reportedKeys.Contains((a.Date, a.SlotId)) && effective[(a.Date, a.SlotId)] > 0)
+                    .ToList();
+                var shares = Distribute(rest, targets.Select(a => effective[(a.Date, a.SlotId)]).ToList());
+                for (var i = 0; i < targets.Count; i++) effective[(targets[i].Date, targets[i].SlotId)] -= shares[i];
+                spread = shares.Sum();
+                unabsorbed = rest - spread;
+                if (unabsorbed > 0)
+                {
+                    pool -= unabsorbed;
+                    lines.Add(new PoolLine(r.Date, -unabsorbed, "Reconcile", "對帳差異，後續額度不夠攤", null, null));
+                }
+            }
+        }
+        return new ReconciliationView(r.Id, r.Date, r.Expected, r.Actual, diff, fromPool, spread, unabsorbed);
+    }
 
     private static EntryView ApplyEnvelope(Entry e, PeriodCategory cat, decimal budget, Dictionary<int, decimal> envelopeSpent, ref decimal pool, List<PoolLine> lines)
     {

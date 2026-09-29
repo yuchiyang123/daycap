@@ -77,6 +77,9 @@ public class Entry : IFact
     public string? Note { get; set; }
     public bool IsSubscription { get; set; }
 
+    /// <summary>用哪個帳戶付的（選填）。信用卡 = 欠款增加；其他帳戶 = 餘額減少。只影響帳戶推算，不影響預算。</summary>
+    public int? AccountId { get; set; }
+
     public DateTime? OccurredAtUtc { get; set; }
     public string? TimeZoneId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -2,7 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import Sheet from './Sheet.vue'
 import ImpactPreview from './ImpactPreview.vue'
-import { createEntry } from '../api/endpoints'
+import { createEntry, getAccounts } from '../api/endpoints'
+import type { AccountView } from '../api/types'
+import { onMounted } from 'vue'
 import type { BillingCycle, CreateEntryRequest } from '../api/types'
 import { store, setPeriod } from '../lib/store'
 import { dayLabel, money } from '../lib/format'
@@ -30,6 +32,11 @@ const subTarget = ref<number>(fixedTargets.value.find((c) => c.group === 'Other'
 const subCycle = ref<BillingCycle>('Monthly')
 const saving = ref(false)
 const error = ref<string | null>(null)
+const payAccounts = ref<AccountView[]>([])
+const accountId = ref<number | null>(null)
+onMounted(async () => {
+  payAccounts.value = (await getAccounts().catch(() => ({ accounts: [] as AccountView[] }))).accounts
+})
 
 watch(note, (v, old) => {
   if (!subName.value || subName.value === old) subName.value = v
@@ -68,6 +75,7 @@ async function submit() {
     const body: CreateEntryRequest = {
       ...request.value,
       subscription: isSub.value ? { name: subName.value.trim(), targetCategoryId: subTarget.value, cycle: subCycle.value, dueDay: null } : null,
+      accountId: accountId.value,
     }
     setPeriod(await createEntry(period.value.id, body))
     emit('close')
@@ -105,10 +113,19 @@ async function submit() {
         <template v-else>每日額度類沒有這個時段，整筆都算超支</template>
       </p>
 
-      <label class="field">
-        備註
-        <input v-model="note" class="input" maxlength="120" placeholder="例如 手搖飲、Netflix" />
-      </label>
+      <div class="row2">
+        <label class="field">
+          備註
+          <input v-model="note" class="input" maxlength="120" placeholder="例如 手搖飲、Netflix" />
+        </label>
+        <label class="field">
+          付款帳戶（選填）
+          <select v-model="accountId" class="select">
+            <option :value="null">不指定</option>
+            <option v-for="a in payAccounts" :key="a.id" :value="a.id">{{ a.name }}{{ a.type === 'CreditCard' ? '（信用卡）' : '' }}</option>
+          </select>
+        </label>
+      </div>
 
       <label class="check">
         <input v-model="usePool" type="checkbox" />

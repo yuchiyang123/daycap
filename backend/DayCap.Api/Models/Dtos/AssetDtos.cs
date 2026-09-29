@@ -6,13 +6,12 @@ public record AssetsView(
     decimal CashTotal,
     decimal InvestmentTotal,
     decimal CostTotal,
-    List<CashAccountDto> CashAccounts,
+    List<AccountView> CashAccounts,
     List<HoldingView> Holdings,
     List<GoalView> Goals,
     List<AssetSnapshotDto> History,
     DateTime? QuotesFetchedAt);
 
-public record CashAccountDto(int Id, string Name, decimal Balance);
 
 public record HoldingDto(int Id, string Symbol, string Name, decimal Shares, decimal AvgCost, decimal? ManualPrice);
 
@@ -59,4 +58,4 @@ public record AssetAdjustmentView(
 /// <summary>Amount 帶正負號：正 = 存入 / 收入，負 = 支出。</summary>
 public record CreateAssetAdjustmentRequest(int CashAccountId, DateOnly Date, decimal Amount, string? Note);
 
-public record SaveAssetsRequest(List<CashAccountDto> CashAccounts, List<HoldingDto> Holdings, List<GoalDto> Goals);
+public record SaveAssetsRequest(List<AccountEdit> CashAccounts, List<HoldingDto> Holdings, List<GoalDto> Goals);

@@ -15,11 +15,12 @@ public interface IAssetService
     Task DeleteAdjustmentAsync(string userId, int adjustmentId, CancellationToken ct = default);
 }
 
-public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock clock) : IAssetService
+public class AssetService(DayCapDbContext db, IQuoteService quotes, IAccountService accounts, IAppClock clock) : IAssetService
 {
     public async Task<AssetsView> GetAsync(string userId, bool refreshQuotes, CancellationToken ct = default)
     {
-        var cash = await db.CashAccounts.Where(c => c.UserId == userId).OrderBy(c => c.SortOrder).ToListAsync(ct);
+        // 帳戶餘額是推算的（最近一次對帳 + 之後已知的移動）；現金總額＝資產帳戶 − 信用卡欠款
+        var accountsView = await accounts.GetAsync(userId, ct);
         var holdings = await db.Holdings.Where(h => h.UserId == userId).OrderBy(h => h.SortOrder).ToListAsync(ct);
         var goals = await db.Goals.Where(g => g.UserId == userId).OrderBy(g => g.SortOrder).ToListAsync(ct);
 
@@ -38,7 +39,7 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
                 h.ManualPrice is null ? q?.TradeDate : null, value, cost, value - cost);
         }).ToList();
 
-        var cashTotal = cash.Sum(c => c.Balance);
+        var cashTotal = accountsView.NetLiquid;
         var investTotal = holdingViews.Sum(h => h.MarketValue);
         await RecordSnapshotAsync(userId, cashTotal, investTotal, ct);
 
@@ -65,7 +66,7 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
 
         var fetchedAt = quoteMap.Count == 0 ? (DateTime?)null : quoteMap.Values.Min(q => q.FetchedAt);
         return new AssetsView(cashTotal, investTotal, holdingViews.Sum(h => h.Cost),
-            cash.Select(c => new CashAccountDto(c.Id, c.Name, c.Balance)).ToList(),
+            accountsView.Accounts,
             holdingViews, goalViews, history, fetchedAt);
     }
 
@@ -73,14 +74,8 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
     {
         Validate(req);
 
-        var cash = await db.CashAccounts.Where(c => c.UserId == userId).ToListAsync(ct);
-        Sync(cash, req.CashAccounts, d => d.Id, (e, d, i) =>
-        {
-            if (e.Balance != d.Balance || e.Name != d.Name.Trim()) e.UpdatedAt = clock.UtcNow;
-            e.Name = d.Name.Trim();
-            e.Balance = d.Balance;
-            e.SortOrder = i;
-        }, () => new CashAccount { UserId = userId }, db.CashAccounts);
+        // 帳戶：只改名稱、類型；新帳戶的期初餘額記成一筆對帳（AccountService）
+        await accounts.SaveAccountsAsync(userId, req.CashAccounts, ct);
 
         var holdings = await db.Holdings.Where(h => h.UserId == userId).ToListAsync(ct);
         Sync(holdings, req.Holdings, d => d.Id, (e, d, i) =>
@@ -122,8 +117,9 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
     public async Task<AssetAdjustmentView> AddAdjustmentAsync(string userId, CreateAssetAdjustmentRequest req, CancellationToken ct = default)
     {
         if (req.Amount == 0 || Math.Abs(req.Amount) > 100_000_000) throw new ValidationException("金額不正確。");
-        var account = await db.CashAccounts.FirstOrDefaultAsync(c => c.Id == req.CashAccountId && c.UserId == userId, ct)
-                      ?? throw new ValidationException("找不到這個存款帳戶，先到資產頁新增一個。");
+        var account = await db.CashAccounts.FirstOrDefaultAsync(c => c.Id == req.CashAccountId && c.UserId == userId && !c.IsArchived, ct)
+                      ?? throw new ValidationException("找不到這個帳戶，先到資產頁新增一個。");
+        if (AccountService.IsLiability(account.Type)) throw new ValidationException("信用卡請用「繳卡費」或在回報時選信用卡付款。");
         var note = (req.Note ?? "").Trim();
         var adj = new AssetAdjustment
         {
@@ -136,24 +132,16 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
             CreatedAt = clock.UtcNow,
         };
         db.AssetAdjustments.Add(adj);
-        account.Balance += req.Amount;
-        account.UpdatedAt = clock.UtcNow;
         await db.SaveChangesAsync(ct);
         return ToView(adj, new Dictionary<int, string> { [account.Id] = account.Name });
     }
 
-    /// <summary>刪除時把金額從帳戶餘額反向還原（帳戶已刪除就只刪紀錄）。</summary>
+    /// <summary>刪除＝新增一筆作廢紀錄；帳戶餘額是推算的，自然就還原。</summary>
     public async Task DeleteAdjustmentAsync(string userId, int adjustmentId, CancellationToken ct = default)
     {
         var all = await db.AssetAdjustments.Where(a => a.UserId == userId).ToListAsync(ct);
         var adj = all.Active().FirstOrDefault(a => a.Id == adjustmentId)
                   ?? throw new NotFoundException("找不到這筆紀錄。");
-        var account = await db.CashAccounts.FirstOrDefaultAsync(c => c.Id == adj.CashAccountId && c.UserId == userId, ct);
-        if (account is not null)
-        {
-            account.Balance -= adj.Amount;
-            account.UpdatedAt = clock.UtcNow;
-        }
         // 只新增（§2.2）：刪除是新增一筆作廢紀錄
         db.AssetAdjustments.Add(new AssetAdjustment
         {
@@ -233,7 +221,7 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAppClock cl
         foreach (var c in req.CashAccounts)
         {
             if (string.IsNullOrWhiteSpace(c.Name) || c.Name.Trim().Length > 40) throw new ValidationException("帳戶名稱不能空白，最多 40 字。");
-            if (Math.Abs(c.Balance) > 2_000_000_000) throw new ValidationException($"「{c.Name}」金額超出範圍。");
+            if (c.OpeningBalance is { } ob && Math.Abs(ob) > 2_000_000_000) throw new ValidationException($"「{c.Name}」金額超出範圍。");
         }
         foreach (var h in req.Holdings)
         {

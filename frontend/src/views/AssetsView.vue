@@ -4,7 +4,9 @@ import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import LineChart, { type Series } from '../charts/LineChart.vue'
 import Meter from '../charts/Meter.vue'
 import { getAssets, saveAssets } from '../api/endpoints'
-import type { AssetsView, CashAccountDto, GoalDto, GoalScope, HoldingDto } from '../api/types'
+import type { AccountEdit, AccountType, AssetsView, GoalDto, GoalScope, HoldingDto } from '../api/types'
+import ReconcileSheet from '../components/ReconcileSheet.vue'
+import TransferSheet from '../components/TransferSheet.vue'
 import { money, pct, shortDate, signed } from '../lib/format'
 
 const data = ref<AssetsView | null>(null)
@@ -14,7 +16,9 @@ const saving = ref(false)
 const refreshing = ref(false)
 
 // 編輯用的草稿
-const cash = ref<CashAccountDto[]>([])
+const cash = ref<AccountEdit[]>([])
+const sheet = ref<'reconcile' | 'transfer' | null>(null)
+const typeLabel: Record<AccountType, string> = { Bank: '銀行', Cash: '現金', EWallet: '電子支付', CreditCard: '信用卡' }
 const holdings = ref<HoldingDto[]>([])
 const goals = ref<GoalDto[]>([])
 
@@ -36,7 +40,7 @@ async function refreshQuotes() {
 
 function startEdit() {
   if (!data.value) return
-  cash.value = data.value.cashAccounts.map((c) => ({ ...c }))
+  cash.value = data.value.cashAccounts.map((c) => ({ id: c.id, name: c.name, type: c.type, openingBalance: null }))
   holdings.value = data.value.holdings.map(({ id, symbol, name, shares, avgCost, manualPrice }) => ({ id, symbol, name, shares, avgCost, manualPrice }))
   goals.value = data.value.goals.map(({ id, name, targetAmount, targetDate, scope }) => ({ id, name, targetAmount, targetDate, scope }))
   editing.value = true
@@ -47,7 +51,10 @@ async function save() {
   error.value = null
   try {
     data.value = await saveAssets({
-      cashAccounts: cash.value.map((c) => ({ ...c, balance: Math.round(Number(c.balance) || 0) })),
+      cashAccounts: cash.value.map((c) => ({
+        ...c,
+        openingBalance: c.id === 0 && c.openingBalance !== null && (c.openingBalance as unknown) !== '' ? Math.round(Number(c.openingBalance) || 0) : null,
+      })),
       holdings: holdings.value.map((h) => ({
         ...h,
         shares: Number(h.shares) || 0,
@@ -214,30 +221,59 @@ function addGoal() {
       </section>
 
       <section class="section">
-        <h2 class="section-title">存款帳戶</h2>
+        <h2 class="section-title">
+          帳戶
+          <span class="acct-actions">
+            <button type="button" class="btn sm" :disabled="data.cashAccounts.length < 2" @click="sheet = 'transfer'">轉帳・繳卡費</button>
+            <button type="button" class="btn sm primary" :disabled="data.cashAccounts.length === 0" @click="sheet = 'reconcile'">對帳</button>
+          </span>
+        </h2>
         <div class="panel">
           <ul class="list">
             <li v-for="c in data.cashAccounts" :key="c.id" class="acct">
-              <span>{{ c.name }}</span>
-              <span class="num">{{ money(c.balance) }}</span>
+              <span class="acct-main">
+                <span>{{ c.name }} <span class="tag">{{ typeLabel[c.type] }}</span></span>
+                <span class="muted small">
+                  {{ c.reconciledOn ? `${shortDate(c.reconciledOn)} 對帳後推算` : '還沒對帳' }}
+                  <template v-if="c.type === 'CreditCard' && c.cardSpendThisPeriod">・本期刷卡 {{ money(c.cardSpendThisPeriod) }}（下月卡費預估）</template>
+                </span>
+              </span>
+              <span class="num" :class="c.type === 'CreditCard' && c.balance > 0 ? 'bad' : ''">
+                {{ c.type === 'CreditCard' ? `欠 ${money(c.balance)}` : money(c.balance) }}
+              </span>
             </li>
           </ul>
-          <p v-if="data.cashAccounts.length === 0" class="empty">還沒有存款帳戶。</p>
+          <p v-if="data.cashAccounts.length === 0" class="empty">還沒有帳戶。按「編輯」新增銀行、現金、電子支付或信用卡。</p>
         </div>
+        <p class="muted small">餘額是「最近一次對帳 + 之後的轉帳、繳卡費、資產加減、有記付款帳戶的花費」推算的；沒回報的日常花費只有對帳時才會補上。</p>
       </section>
+      <ReconcileSheet v-if="sheet === 'reconcile'" @close="sheet = null" @saved="load()" />
+      <TransferSheet v-if="sheet === 'transfer'" @close="sheet = null" @saved="load()" />
     </template>
 
     <!-- ---------- 編輯模式 ---------- -->
     <form v-if="editing" class="edit" @submit.prevent="save">
       <section class="section">
-        <h2 class="section-title">存款帳戶</h2>
+        <h2 class="section-title">帳戶<span class="aside">既有帳戶的餘額用「對帳」更新</span></h2>
         <div class="panel panel-pad rows">
           <div v-for="(c, i) in cash" :key="i" class="row cash-row">
             <input v-model="c.name" class="input compact" placeholder="帳戶名稱" maxlength="40" aria-label="帳戶名稱" />
-            <input v-model.number="c.balance" class="input compact num" inputmode="numeric" placeholder="餘額" aria-label="餘額" />
+            <select v-model="c.type" class="select compact" aria-label="類型">
+              <option v-for="(label, k) in typeLabel" :key="k" :value="k">{{ label }}</option>
+            </select>
+            <input
+              v-if="c.id === 0"
+              v-model.number="c.openingBalance"
+              class="input compact num"
+              inputmode="numeric"
+              :placeholder="c.type === 'CreditCard' ? '目前欠款' : '目前餘額'"
+              aria-label="期初餘額"
+            />
+            <span v-else class="muted small">已建立</span>
             <button type="button" class="btn quiet sm danger" @click="cash.splice(i, 1)">移除</button>
           </div>
-          <button type="button" class="btn sm" @click="cash.push({ id: 0, name: '', balance: 0 })">新增帳戶</button>
+          <button type="button" class="btn sm" @click="cash.push({ id: 0, name: '', type: 'Bank', openingBalance: null })">新增帳戶</button>
+          <p class="muted small">移除只是封存：舊的對帳、轉帳紀錄都還在。</p>
         </div>
       </section>
 
@@ -332,6 +368,8 @@ function addGoal() {
 .acct {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   padding: 10px 16px;
 }
 .edit {
@@ -353,8 +391,22 @@ function addGoal() {
   gap: 8px;
   align-items: center;
 }
+.acct-actions {
+  display: flex;
+  gap: 6px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.acct-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.small {
+  font-size: 12px;
+}
 .cash-row {
-  grid-template-columns: 1fr 140px auto;
+  grid-template-columns: 1fr 110px 130px auto;
 }
 .hold-row {
   grid-template-columns: 90px 1fr 90px 100px 100px auto;
@@ -366,6 +418,7 @@ function addGoal() {
   grid-template-columns: 1fr 120px 150px 120px auto;
 }
 @media (max-width: 720px) {
+  .cash-row,
   .hold-row,
   .goal-row {
     grid-template-columns: 1fr 1fr;

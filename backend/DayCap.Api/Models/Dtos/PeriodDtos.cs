@@ -25,7 +25,11 @@ public record PeriodView(
     List<DayView> Days,
     List<EntryView> Entries,
     List<FixedChargeView> FixedCharges,
-    List<PoolTransferView> Transfers);
+    List<PoolTransferView> Transfers,
+    List<ReconciliationView> Reconciliations);
+
+/// <summary>對帳結果：Diff = 實際 − 預期；負的依超支規則處理（FromPool / Spread / Unabsorbed）。</summary>
+public record ReconciliationView(int Id, DateOnly Date, decimal Expected, decimal Actual, decimal Diff, decimal FromPool, decimal Spread, decimal Unabsorbed);
 
 public record PoolView(decimal Opening, decimal Balance, List<PoolLine> Lines);
 
@@ -105,7 +109,9 @@ public record CreateEntryRequest(
     decimal Amount,
     bool UsePool,
     string? Note,
-    SubscriptionRequest? Subscription);
+    SubscriptionRequest? Subscription,
+    // 用哪個帳戶付的（選填，§5）：信用卡 = 欠款增加
+    int? AccountId = null);
 
 /// <summary>回報時順便把它登記成訂閱：下個週期起變成固定支出。</summary>
 public record SubscriptionRequest(string Name, int TargetCategoryId, BillingCycle Cycle, int? DueDay);

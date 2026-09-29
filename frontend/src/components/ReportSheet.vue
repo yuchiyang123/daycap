@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue'
 import Sheet from './Sheet.vue'
 import ImpactPreview from './ImpactPreview.vue'
-import { createEntry, deleteEntry } from '../api/endpoints'
-import type { CreateEntryRequest, SlotView } from '../api/types'
+import { createEntry, deleteEntry, getAccounts } from '../api/endpoints'
+import type { AccountView, CreateEntryRequest, SlotView } from '../api/types'
+import { onMounted } from 'vue'
 import { store, setPeriod } from '../lib/store'
 import { dayLabel, money } from '../lib/format'
 import { usePreview } from '../lib/usePreview'
@@ -24,6 +25,11 @@ const usePool = ref(existing.value ? existing.value.usePool : true)
 const note = ref(existing.value?.note ?? '')
 const saving = ref(false)
 const error = ref<string | null>(null)
+const payAccounts = ref<AccountView[]>([])
+const accountId = ref<number | null>(null)
+onMounted(async () => {
+  payAccounts.value = (await getAccounts().catch(() => ({ accounts: [] as AccountView[] }))).accounts
+})
 
 const parsed = computed(() => {
   const v = amount.value.trim()
@@ -59,7 +65,7 @@ async function submit() {
   saving.value = true
   error.value = null
   try {
-    setPeriod(await createEntry(period.value.id, request.value))
+    setPeriod(await createEntry(period.value.id, { ...request.value, accountId: actualMode.value ? accountId.value : null }))
     emit('close')
   } catch (e) {
     error.value = (e as Error).message
@@ -125,10 +131,19 @@ async function clearReport() {
         </span>
       </label>
 
-      <label class="field">
-        備註（選填）
-        <input v-model="note" class="input" maxlength="120" placeholder="例如 聚餐" />
-      </label>
+      <div class="row2">
+        <label class="field">
+          備註（選填）
+          <input v-model="note" class="input" maxlength="120" placeholder="例如 聚餐" />
+        </label>
+        <label v-if="actualMode && payAccounts.length" class="field">
+          付款帳戶（選填）
+          <select v-model="accountId" class="select">
+            <option :value="null">不指定</option>
+            <option v-for="a in payAccounts" :key="a.id" :value="a.id">{{ a.name }}{{ a.type === 'CreditCard' ? '（信用卡）' : '' }}</option>
+          </select>
+        </label>
+      </div>
 
       <ImpactPreview :preview="preview" :loading="loading" />
 
@@ -171,6 +186,11 @@ async function clearReport() {
 .quick {
   display: flex;
   gap: 8px;
+}
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 .actions {
   display: flex;

@@ -30,6 +30,12 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
         var period = await periods.LoadAsync(userId, periodId, ct);
         var view = await periods.ComputeAsync(period, ct);
         var entry = BuildEntry(period, view, req);
+        if (req.AccountId is { } accountId)
+        {
+            if (!db.CashAccounts.Any(a => a.Id == accountId && a.UserId == userId && !a.IsArchived))
+                throw new ValidationException("找不到付款帳戶。");
+            entry.AccountId = accountId;
+        }
 
         // 同一天同一時段再回報 = 修改：新的一筆取代舊的（舊的留著，可以追溯）
         if (req.SlotId is { } slotId)

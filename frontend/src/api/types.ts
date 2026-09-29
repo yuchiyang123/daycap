@@ -213,6 +213,18 @@ export interface PeriodView {
   entries: EntryView[]
   fixedCharges: FixedChargeView[]
   transfers: PoolTransferView[]
+  reconciliations: ReconciliationView[]
+}
+
+export interface ReconciliationView {
+  id: number
+  date: string
+  expected: number
+  actual: number
+  diff: number
+  fromPool: number
+  spread: number
+  unabsorbed: number
 }
 
 export interface CreateEntryRequest {
@@ -224,6 +236,8 @@ export interface CreateEntryRequest {
   usePool: boolean
   note: string | null
   subscription: { name: string; targetCategoryId: number; cycle: BillingCycle; dueDay: number | null } | null
+  /** 用哪個帳戶付的（選填）：信用卡 = 欠款增加 */
+  accountId?: number | null
 }
 
 export interface EntryPreview {
@@ -232,6 +246,74 @@ export interface EntryPreview {
   poolAfter: number
   categoryRemainingBefore: number
   categoryRemainingAfter: number
+}
+
+// ---- accounts (§5, §12.1) ----
+export type AccountType = 'Bank' | 'Cash' | 'EWallet' | 'CreditCard'
+
+export interface AccountView {
+  id: number
+  name: string
+  type: AccountType
+  /** 推算值；信用卡是欠款（正數） */
+  balance: number
+  reconciledOn: string | null
+  cardSpendThisPeriod: number
+  isArchived: boolean
+}
+
+export interface AccountsView {
+  accounts: AccountView[]
+  netLiquid: number
+  lastFullReconciliation: string | null
+}
+
+export interface AccountEdit {
+  id: number
+  name: string
+  type: AccountType
+  openingBalance: number | null
+}
+
+export type TransferKind = 'Transfer' | 'CardPayment'
+
+export interface TransferView {
+  id: number
+  date: string
+  kind: TransferKind
+  fromAccountId: number
+  fromName: string
+  toAccountId: number
+  toName: string
+  amount: number
+  note: string | null
+  createdAt: string
+}
+
+export interface ReconciliationResult {
+  id: number | null
+  date: string
+  hasBaseline: boolean
+  baselineDate: string | null
+  expected: number
+  actual: number
+  diff: number
+  fromPool: number
+  spread: number
+  unabsorbed: number
+  largeDiff: boolean
+  poolBefore: number
+  poolAfter: number
+}
+
+export interface ReconciliationSummary {
+  id: number
+  date: string
+  isFull: boolean
+  net: number
+  note: string | null
+  createdAt: string
+  lines: { accountId: number; balance: number }[]
 }
 
 // ---- ledger / notifications ----
@@ -264,12 +346,6 @@ export interface NotificationsView {
 }
 
 // ---- assets ----
-export interface CashAccountDto {
-  id: number
-  name: string
-  balance: number
-}
-
 export interface HoldingDto {
   id: number
   symbol: string
@@ -307,7 +383,7 @@ export interface AssetsView {
   cashTotal: number
   investmentTotal: number
   costTotal: number
-  cashAccounts: CashAccountDto[]
+  cashAccounts: AccountView[]
   holdings: HoldingView[]
   goals: GoalView[]
   history: { date: string; cash: number; investments: number }[]

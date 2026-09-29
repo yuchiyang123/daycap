@@ -323,11 +323,22 @@ public sealed class PeriodServiceTests : IDisposable
     }
 }
 
-/// <summary>固定在某個邏輯日台北中午的時鐘（UTC 04:00）。</summary>
+/// <summary>
+/// 固定在某個邏輯日台北中午（UTC 04:00）附近的時鐘。每讀一次往前走 1 毫秒，
+/// 跟真實時鐘一樣「後發生的事登錄時間比較晚」，同一天內先後順序才分得出來。
+/// </summary>
 public sealed class TestClock(DateOnly today) : IAppClock
 {
-    public DateOnly Current { get; set; } = today;
-    public DateTime UtcNow => Current.ToDateTime(new TimeOnly(4, 0), DateTimeKind.Utc);
+    private DateOnly _current = today;
+    private int _ticks;
+
+    public DateOnly Current
+    {
+        get => _current;
+        set { _current = value; _ticks = 0; }
+    }
+
+    public DateTime UtcNow => Current.ToDateTime(new TimeOnly(4, 0), DateTimeKind.Utc).AddMilliseconds(++_ticks);
     public DateOnly Today => Current;
     public DateOnly ToLocalDate(DateTime utc) => DateOnly.FromDateTime(utc.AddHours(8));
     public DateOnly LogicalDate(DateTime utc, TimeSpan dayStart) => DateOnly.FromDateTime(utc.AddHours(8) - dayStart);

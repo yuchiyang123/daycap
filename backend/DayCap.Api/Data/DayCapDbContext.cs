@@ -20,6 +20,9 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<IncomeAdjustment> IncomeAdjustments => Set<IncomeAdjustment>();
     public DbSet<AssetAdjustment> AssetAdjustments => Set<AssetAdjustment>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<Reconciliation> Reconciliations => Set<Reconciliation>();
+    public DbSet<ReconciliationLine> ReconciliationLines => Set<ReconciliationLine>();
+    public DbSet<AccountTransfer> AccountTransfers => Set<AccountTransfer>();
 
     public DbSet<CashAccount> CashAccounts => Set<CashAccount>();
     public DbSet<Holding> Holdings => Set<Holding>();
@@ -90,6 +93,17 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
         b.Entity<PoolTransfer>().Property(x => x.Note).HasMaxLength(120);
 
         b.Entity<CashAccount>().HasIndex(x => x.UserId);
+        b.Entity<Reconciliation>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Date });
+            e.Property(x => x.Note).HasMaxLength(120);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.ReconciliationId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<AccountTransfer>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Date });
+            e.Property(x => x.Note).HasMaxLength(120);
+        });
         b.Entity<Holding>(e =>
         {
             e.HasIndex(x => x.UserId);

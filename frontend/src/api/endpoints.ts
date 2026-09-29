@@ -1,11 +1,16 @@
 import { api, ensureCsrf, readCookie } from './http'
 import type {
+  AccountEdit,
+  AccountsView,
   AssetAdjustmentView,
+  ReconciliationResult,
+  ReconciliationSummary,
+  TransferKind,
+  TransferView,
   AssetsView,
   IncomeAdjustmentKind,
   NotificationsView,
   CalendarDayDto,
-  CashAccountDto,
   CreateEntryRequest,
   EntryPreview,
   GoalDto,
@@ -87,5 +92,21 @@ export const deleteTransfer = (periodId: number, transferId: number) =>
   api<PeriodView>(`/api/periods/${periodId}/transfers/${transferId}`, { method: 'DELETE' })
 
 export const getAssets = (refresh = false) => api<AssetsView>(`/api/assets${refresh ? '?refresh=true' : ''}`)
-export const saveAssets = (body: { cashAccounts: CashAccountDto[]; holdings: HoldingDto[]; goals: GoalDto[] }) =>
+export const saveAssets = (body: { cashAccounts: AccountEdit[]; holdings: HoldingDto[]; goals: GoalDto[] }) =>
   api<AssetsView>('/api/assets', { method: 'PUT', body })
+
+// ---- 帳戶、轉帳、對帳（§5、§12.1）----
+export const getAccounts = () => api<AccountsView>('/api/accounts')
+export const listTransfers = (from?: string, to?: string) =>
+  api<TransferView[]>(`/api/accounts/transfers${from ? `?from=${from}&to=${to}` : ''}`)
+export const addTransfer2 = (body: { date: string; kind: TransferKind; fromAccountId: number; toAccountId: number; amount: number; note: string | null }) =>
+  api<TransferView>('/api/accounts/transfers', { method: 'POST', body })
+export const deleteTransfer2 = (id: number) => api<void>(`/api/accounts/transfers/${id}`, { method: 'DELETE' })
+
+type ReconcileBody = { date: string; lines: { accountId: number; balance: number }[]; usePool: boolean; note: string | null }
+export const listReconciliations = () => api<ReconciliationSummary[]>('/api/accounts/reconciliations')
+export const previewReconciliation = (body: ReconcileBody) =>
+  api<ReconciliationResult>('/api/accounts/reconciliations/preview', { method: 'POST', body })
+export const createReconciliation = (body: ReconcileBody) =>
+  api<ReconciliationResult>('/api/accounts/reconciliations', { method: 'POST', body })
+export const deleteReconciliation = (id: number) => api<void>(`/api/accounts/reconciliations/${id}`, { method: 'DELETE' })

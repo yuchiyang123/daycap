@@ -28,7 +28,7 @@ public sealed class LedgerAndSettlementTests : IDisposable
         _settings = new SettingsService(_db, _clock);
         _periods = new PeriodService(_db, _settings, new WeekendCalendar(), _clock);
         _entries = new EntryService(_db, _periods, _settings, _clock);
-        _assets = new AssetService(_db, new NoQuotes(), _clock);
+        _assets = new AssetService(_db, new NoQuotes(), new AccountService(_db, _periods, _settings, _clock), _clock);
         _notifications = new NotificationService(_db, _periods, _settings, _clock);
 
         // 每月 1 號發薪、不調整，讓期間固定是 10/1–10/31
@@ -45,7 +45,7 @@ public sealed class LedgerAndSettlementTests : IDisposable
 
     private async Task<int> AddAccount(string name, decimal balance)
     {
-        var view = await _assets.SaveAsync("u", new SaveAssetsRequest([new CashAccountDto(0, name, balance)], [], []));
+        var view = await _assets.SaveAsync("u", new SaveAssetsRequest([new AccountEdit(0, name, AccountType.Bank, balance)], [], []));
         return view.CashAccounts.Single().Id;
     }
 
@@ -98,8 +98,7 @@ public sealed class LedgerAndSettlementTests : IDisposable
         _clock.Current = new DateOnly(2026, 11, 1);
         await _periods.GetCurrentAsync("u");
 
-        Assert.Equal(100_000, (await _db.CashAccounts.SingleAsync()).Balance); // §2.1：不自動從存款扣
-        Assert.Empty(await _db.AssetAdjustments.ToListAsync());
+        Assert.Empty(await _db.AssetAdjustments.ToListAsync()); // §2.1：不自動從存款扣
         var settlement = (await _notifications.GetAsync("u")).Items.Single(n => n.Kind == "settlement");
         Assert.Contains(settlement.Lines, l => l.Contains("超支 2,000") && l.Contains("月結"));
     }
@@ -128,10 +127,10 @@ public sealed class LedgerAndSettlementTests : IDisposable
         var accountId = await AddAccount("錢包", 5000);
 
         var adj = await _assets.AddAdjustmentAsync("u", new CreateAssetAdjustmentRequest(accountId, _clock.Current, -1200, "修手機"));
-        Assert.Equal(3800, (await _db.CashAccounts.SingleAsync()).Balance);
+        Assert.Equal(3800, (await _assets.GetAsync("u", false)).CashTotal);
 
         await _assets.DeleteAdjustmentAsync("u", adj.Id);
-        Assert.Equal(5000, (await _db.CashAccounts.SingleAsync()).Balance);
+        Assert.Equal(5000, (await _assets.GetAsync("u", false)).CashTotal);
         Assert.Equal(2, await _db.AssetAdjustments.CountAsync());
         Assert.Empty(await _assets.ListAdjustmentsAsync("u", null, null));
     }

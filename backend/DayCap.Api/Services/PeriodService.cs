@@ -14,7 +14,8 @@ public interface IPeriodService
     Task<PeriodView> GetAsync(string userId, int periodId, CancellationToken ct = default);
     Task<List<PeriodSummaryDto>> ListAsync(string userId, CancellationToken ct = default);
     Task<BudgetPeriod> LoadAsync(string userId, int periodId, CancellationToken ct = default, bool tracking = true);
-    Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default);
+    /// <param name="extraRecon">試算用：假裝多了這一次對帳（不存檔）。</param>
+    Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default, Reconciliation? extraRecon = null);
     Task<int> DeleteBeforeStartAsync(string userId, CancellationToken ct = default);
     Task<PeriodView> SetNextPaydayAsync(string userId, int periodId, DateOnly payday, CancellationToken ct = default);
 }
@@ -107,13 +108,105 @@ public class PeriodService(
             .FirstOrDefaultAsync(p => p.Id == periodId && p.UserId == userId, ct)
         ?? throw new NotFoundException("找不到這個週期。");
 
-    public async Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default)
+    public Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default, Reconciliation? extraRecon = null) =>
+        ComputeInternalAsync(period, extraRecon, [], 0, ct);
+
+    /// <summary>
+    /// 重播一期。這期裡面如果有完整對帳（§12.1），算出每一次的「沒交代的差異」：
+    /// 預期淨額 = 上一次完整對帳的淨額 + 兩次之間已知的收支（薪水、每日時段、額外花費、固定支出、資產加減）；
+    /// 帳戶互轉、繳卡費不影響淨額，所以不用算。差額在對帳的登錄時間點重播（進池或照超支規則）。
+    /// 後來補回報的事實會讓預期值跟著變，差額自動縮小。差額會影響之後的額度，所以迭代到穩定為止。
+    /// </summary>
+    private async Task<PeriodView> ComputeInternalAsync(BudgetPeriod period, Reconciliation? extraRecon,
+        Dictionary<int, PeriodView> cache, int depth, CancellationToken ct)
     {
         var timeline = await settings.GetTimelineAsync(period.UserId, ct);
         var days = await calendar.GetDaysAsync(period.UserId, period.StartDate, period.EndDate, ct);
         var plan = PlanBuilder.Build(period.StartDate, period.EndDate, timeline, days);
         var dayStart = timeline.For(clock.Today).Doc.DayStart;
-        return BudgetEngine.Compute(period, plan, clock.LogicalToday(dayStart), utc => clock.LogicalDate(utc, dayStart), days);
+        var today = clock.LogicalToday(dayStart);
+        PeriodView Run(IReadOnlyList<ReconDiff> diffs) =>
+            BudgetEngine.Compute(period, plan, today, utc => clock.LogicalDate(utc, dayStart), days, diffs);
+
+        var recons = (await db.Reconciliations.AsNoTracking().Include(r => r.Lines).Where(r => r.UserId == period.UserId).ToListAsync(ct)).Active();
+        if (extraRecon is not null) recons.Add(extraRecon);
+        var full = recons.Where(r => r.IsFull).OrderBy(r => r.Date).ThenBy(r => r.CreatedAt).ToList();
+        var inPeriod = full.Where(r => r.Date >= period.StartDate && r.Date <= period.EndDate).ToList();
+
+        var view = Run([]);
+        if (inPeriod.Count == 0 || depth > 2) return view;
+
+        var types = await db.CashAccounts.AsNoTracking().Where(a => a.UserId == period.UserId).ToDictionaryAsync(a => a.Id, a => a.Type, ct);
+        var adjustments = (await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == period.UserId).ToListAsync(ct)).Active();
+
+        List<ReconDiff> diffs = [];
+        for (var iteration = 0; iteration < 5; iteration++)
+        {
+            var next = new List<ReconDiff>();
+            foreach (var r in inPeriod)
+            {
+                var prev = full.LastOrDefault(x => x.Id != r.Id && (x.Date < r.Date || (x.Date == r.Date && x.CreatedAt < r.CreatedAt)));
+                if (prev is null || prev.Date < period.StartDate.AddDays(-100)) continue; // 沒有基準：這次只當基準
+                var flows = await FlowsAsync(period, view, prev.Date, r.Date, cache, depth, ct)
+                            + adjustments.Where(a => a.Date > prev.Date && a.Date <= r.Date).Sum(a => a.Amount);
+                next.Add(new ReconDiff(r.Id, r.Date, r.CreatedAt,
+                    AccountService.Net(prev, types) + flows, AccountService.Net(r, types), r.UsePool));
+            }
+            var same = next.Count == diffs.Count && next.Zip(diffs).All(p => p.First.Id == p.Second.Id && p.First.Expected == p.Second.Expected);
+            diffs = next;
+            view = Run(diffs);
+            if (same) break;
+        }
+        return view;
+    }
+
+    /// <summary>(from, to] 之間已知的收支（收入為正、支出為負）。跨到其他期間的日子，用那一期的重播結果。</summary>
+    private async Task<decimal> FlowsAsync(BudgetPeriod current, PeriodView currentView, DateOnly from, DateOnly to,
+        Dictionary<int, PeriodView> cache, int depth, CancellationToken ct)
+    {
+        decimal total = 0;
+        var d = from.AddDays(1);
+        while (d <= to)
+        {
+            PeriodView? view;
+            if (d >= current.StartDate && d <= current.EndDate)
+            {
+                view = currentView;
+            }
+            else
+            {
+                var other = await db.Periods.AsNoTracking()
+                    .Where(p => p.UserId == current.UserId && p.StartDate <= d && p.EndDate >= d)
+                    .Select(p => (int?)p.Id).FirstOrDefaultAsync(ct);
+                if (other is not { } oid)
+                {
+                    d = d.AddDays(1); // 不屬於任何期間的日子（很久沒用）：沒有已知收支
+                    continue;
+                }
+                if (!cache.TryGetValue(oid, out view))
+                {
+                    view = await ComputeInternalAsync(await LoadAsync(current.UserId, oid, ct, tracking: false), null, cache, depth + 1, ct);
+                    cache[oid] = view;
+                }
+            }
+
+            var last = view.EndDate < to ? view.EndDate : to;
+            for (; d <= last; d = d.AddDays(1)) total += DayFlow(view, d);
+        }
+        return total;
+    }
+
+    /// <summary>某一天已知的收支：發薪那天收入 −（時段實際或照預算）− 額外花費 − 當天到期的固定支出。</summary>
+    public static decimal DayFlow(PeriodView view, DateOnly d)
+    {
+        var day = view.Days.FirstOrDefault(x => x.Date == d);
+        if (day is null) return 0;
+        var entries = view.Entries.ToDictionary(e => e.Id);
+        var outflow = day.Slots.Sum(s => s.Actual ?? s.Planned)
+                      + day.ExtraEntryIds.Where(entries.ContainsKey).Sum(id => entries[id].Actual)
+                      + view.FixedCharges.Where(f => (f.DueDate ?? view.StartDate) == d).Sum(f => f.Amount);
+        var inflow = d == view.StartDate ? view.Income : 0;
+        return inflow - outflow;
     }
 
     /// <summary>刪掉開始日期之前的週期（試用資料），連同回報一起。</summary>
