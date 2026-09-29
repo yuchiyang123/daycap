@@ -140,7 +140,7 @@ const segments = computed<Segment[]>(() => {
     color: `var(${SLOTS[i]})`,
     note: groupLabel[c.group],
   }))
-  if (unallocated.value > 0) segs.push({ key: 'u', label: '未分配（進待定區）', value: unallocated.value, color: 'var(--line-2)' })
+  if (unallocated.value > 0) segs.push({ key: 'u', label: '未分配（進待分配池）', value: unallocated.value, color: 'var(--line-2)' })
   return segs
 })
 
@@ -431,7 +431,7 @@ async function signOut() {
               <button type="button" class="btn sm" :disabled="giveTarget < 0" @click="giveAll">全部給它</button>
               <button type="button" class="btn sm" @click="spreadAll">依比例分到全部</button>
             </div>
-            <p class="muted small">不分也沒關係：沒分配的錢每期會進待定區，拿來補超支。</p>
+            <p class="muted small">不分也沒關係：沒分配的錢每期會進待分配池，拿來補超支。</p>
           </div>
         </div>
       </section>

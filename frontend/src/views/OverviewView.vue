@@ -32,7 +32,7 @@ const segments = computed<Segment[]>(() => {
   const tail = cats.value.slice(7)
   if (tail.length === 1) head.push({ key: tail[0].categoryId, label: tail[0].name, value: tail[0].budget, color: colorOf(7), note: `${groupLabel[tail[0].group]}・${modeLabel[tail[0].mode]}` })
   else if (tail.length > 1) head.push({ key: 'other', label: '其他分類', value: tail.reduce((a, c) => a + c.budget, 0), color: colorOf(7), note: tail.map((c) => c.name).join('、') })
-  if (unallocated.value > 0) head.push({ key: 'pool', label: '未分配（進待定區）', value: unallocated.value, color: 'var(--line-2)', note: '' })
+  if (unallocated.value > 0) head.push({ key: 'pool', label: '未分配（進待分配池）', value: unallocated.value, color: 'var(--line-2)', note: '' })
   return head
 })
 
@@ -69,7 +69,7 @@ const lineSeries = computed<Series[]>(() => [
 const lineLabels = computed(() => period.value.days.map((d) => shortDate(d.date)))
 const todayIndex = computed(() => period.value.days.findIndex((d) => d.status === 'today'))
 
-// ---- 待定區 ----
+// ---- 待分配池 ----
 const transferAmount = ref('')
 const transferNote = ref('')
 const transferDir = ref<'out' | 'in'>('out')
@@ -170,7 +170,7 @@ async function savePayday() {
         <span class="note">每日 + 月額度</span>
       </div>
       <div class="tile">
-        <span class="label">待定區</span>
+        <span class="label">待分配池</span>
         <span class="value" :class="period.pool.balance < 0 ? 'bad' : ''">{{ money(period.pool.balance) }}</span>
         <span class="note">期初 {{ money(period.pool.opening) }}</span>
       </div>
@@ -227,7 +227,7 @@ async function savePayday() {
 
     <div class="grid-2">
       <section class="section">
-        <h2 class="section-title">待定區流水<span class="aside num">餘額 {{ money(period.pool.balance) }}</span></h2>
+        <h2 class="section-title">待分配池流水<span class="aside num">餘額 {{ money(period.pool.balance) }}</span></h2>
         <div class="panel">
           <form class="transfer" @submit.prevent="submitTransfer">
             <div class="seg" role="group" aria-label="方向">

@@ -76,7 +76,8 @@ public record SlotView(
     decimal BasePlanned,
     decimal Planned,
     decimal? Actual,
-    int? EntryId);
+    int? EntryId,
+    string? Start = null);
 
 public record EntryView(
     int Id,

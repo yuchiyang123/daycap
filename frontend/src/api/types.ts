@@ -178,7 +178,7 @@ export interface CategoryView {
   spent: number
   plannedRemaining: number
   projected: number
-  /** 從待定區分配進來的額度（budget 已包含） */
+  /** 從待分配池分配進來的額度（budget 已包含） */
   allocated: number
 }
 
@@ -190,6 +190,8 @@ export interface SlotView {
   planned: number
   actual: number | null
   entryId: number | null
+  /** 時段開始時間 HH:mm（邏輯日內） */
+  start?: string | null
 }
 
 export interface DayView {

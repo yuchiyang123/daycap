@@ -6,7 +6,7 @@ import { store, setPeriod } from '../lib/store'
 import { modeLabel, money } from '../lib/format'
 
 /**
- * 分配剩餘：待定區還有錢時，全部（或一部分）給某一個分類，或依各分類額度的比例分給全部。
+ * 分配剩餘：待分配池還有錢時，全部（或一部分）給某一個分類，或依各分類額度的比例分給全部。
  * 每日類分到的錢會加到之後每一天的時段上，月額度類直接加額度。
  */
 const emit = defineEmits<{ close: [] }>()
@@ -58,7 +58,7 @@ async function submit() {
 </script>
 
 <template>
-  <Sheet title="分配剩餘" :subtitle="`待定區目前 ${money(period.pool.balance)}`" @close="emit('close')">
+  <Sheet title="分配剩餘" :subtitle="`待分配池目前 ${money(period.pool.balance)}`" @close="emit('close')">
     <form class="form" @submit.prevent="submit">
       <div class="seg" role="group" aria-label="分配方式">
         <button type="button" :aria-pressed="mode === 'single'" @click="mode = 'single'">全部給一個分類</button>
@@ -90,8 +90,8 @@ async function submit() {
         </li>
       </ul>
 
-      <p class="muted small">每日類分到的錢會平均加到之後每一天的時段；月額度類直接加額度。在總覽的待定區流水刪掉那一筆就能還原。</p>
-      <p v-if="n > period.pool.balance" class="error-box">超過待定區餘額。</p>
+      <p class="muted small">每日類分到的錢會平均加到之後每一天的時段；月額度類直接加額度。在總覽的待分配池流水刪掉那一筆就能還原。</p>
+      <p v-if="n > period.pool.balance" class="error-box">超過待分配池餘額。</p>
       <p v-if="error" class="error-box">{{ error }}</p>
 
       <div class="actions">

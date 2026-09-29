@@ -13,7 +13,7 @@ import { usePreview } from '../lib/usePreview'
 
 /**
  * 回報某天某個時段（例如今天早餐）。預設勾「輸入的是實際價格」；取消勾選就改成輸入「超支多少」。
- * 超支時預設勾「先從待定區扣」，待定區不夠或不勾，才攤到之後的日子。
+ * 超支時預設勾「先從待分配池扣」，待分配池不夠或不勾，才攤到之後的日子。
  */
 const props = defineProps<{ date: string; slot: SlotView; categoryName: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -134,8 +134,8 @@ async function clearReport() {
       <label class="check">
         <input v-model="usePool" type="checkbox" />
         <span>
-          超支先從待定區扣
-          <span class="hint">目前待定區 {{ money(period.pool.balance) }}；不夠的部分才攤到之後的日子</span>
+          超支先從待分配池扣
+          <span class="hint">目前待分配池 {{ money(period.pool.balance) }}；不夠的部分才攤到之後的日子</span>
         </span>
       </label>
 

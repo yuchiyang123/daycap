@@ -176,7 +176,7 @@ public static class BudgetEngine
             {
                 slotEntries.TryGetValue((d, a.SlotId), out var se);
                 decimal? actual = se is not null && entryViews.TryGetValue(se.Id, out var sv) ? sv.Actual : null;
-                return new SlotView(a.CategoryId, a.SlotId, a.SlotName, a.Planned, effective[(d, a.SlotId)], actual, se?.Id);
+                return new SlotView(a.CategoryId, a.SlotId, a.SlotName, a.Planned, effective[(d, a.SlotId)], actual, se?.Id, a.SlotStart);
             }).ToList();
 
             // 有回報但當天沒有排程的時段（例如假日也去通勤）也要看得到，當成 0 額度的時段。

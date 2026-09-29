@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import DayPanel from '../components/DayPanel.vue'
+import SwipeStack from '../components/SwipeStack.vue'
 import ReportSheet from '../components/ReportSheet.vue'
 import ExtraSheet from '../components/ExtraSheet.vue'
 import CategorySummary from '../components/CategorySummary.vue'
@@ -22,7 +23,7 @@ const variableCategories = computed(() => period.value.categories.filter((c) => 
 /** 今天還能花：還沒回報的時段額度加總（回報過的就不算）。 */
 const leftToday = computed(() => today.value.slots.filter((s) => s.actual === null).reduce((a, s) => a + s.planned, 0))
 
-const reporting = ref<{ slot: SlotView; name: string } | null>(null)
+const reporting = ref<{ slot: SlotView; name: string; date: string } | null>(null)
 const addingExtra = ref(false)
 const showIncome = ref(false)
 const showAllocate = ref(false)
@@ -117,10 +118,12 @@ async function confirmNoChange() {
       </div>
     </section>
 
+    <SwipeStack @correct="(s, n, d) => (reporting = { slot: s, name: n, date: d })" />
+
     <div class="cols">
       <section class="section">
         <h2 class="section-title">檢核<span class="aside">沒回報 = 照預算</span></h2>
-        <DayPanel :day="today" @report="(s, n) => (reporting = { slot: s, name: n })" @extra="addingExtra = true" />
+        <DayPanel :day="today" @report="(s, n) => (reporting = { slot: s, name: n, date: today.date })" @extra="addingExtra = true" />
       </section>
 
       <section class="section">
@@ -138,7 +141,7 @@ async function confirmNoChange() {
 
     <ReportSheet
       v-if="reporting"
-      :date="today.date"
+      :date="reporting.date"
       :slot="reporting.slot"
       :category-name="reporting.name"
       @close="reporting = null"

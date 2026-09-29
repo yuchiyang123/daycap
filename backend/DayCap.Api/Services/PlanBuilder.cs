@@ -156,6 +156,7 @@ public static class PlanBuilder
                     CategoryId = cat.Id,
                     SlotId = slotId,
                     SlotName = slot.Name,
+                    SlotStart = slot.Start,
                     SortOrder = order,
                     IsHoliday = holiday,
                     Planned = planned,

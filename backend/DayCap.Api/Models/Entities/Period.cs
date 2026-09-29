@@ -153,6 +153,9 @@ public class DayAllocation
     public int CategoryId { get; set; }
     public int SlotId { get; set; }
     public string SlotName { get; set; } = "";
+
+    /// <summary>時段開始時間（HH:mm，邏輯日內），給滑卡決定哪些時段已經到了。</summary>
+    public string SlotStart { get; set; } = "";
     public int SortOrder { get; set; }
     public bool IsHoliday { get; set; }
     public decimal Planned { get; set; }

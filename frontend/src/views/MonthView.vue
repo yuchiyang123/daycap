@@ -51,7 +51,7 @@ const addingExtra = ref(false)
         <span class="note">少花 {{ underDays }} 天</span>
       </div>
       <div class="tile">
-        <span class="label">待定區</span>
+        <span class="label">待分配池</span>
         <span class="value" :class="period.pool.balance < 0 ? 'bad' : ''">{{ money(period.pool.balance) }}</span>
         <span class="note">期初 {{ money(period.pool.opening) }}</span>
       </div>

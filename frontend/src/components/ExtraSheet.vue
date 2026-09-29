@@ -139,8 +139,8 @@ async function submit() {
       <label class="check">
         <input v-model="usePool" type="checkbox" />
         <span>
-          {{ isEnvelope ? '超過月額度的部分從待定區扣' : '超支先從待定區扣' }}
-          <span class="hint">目前待定區 {{ money(period.pool.balance) }}</span>
+          {{ isEnvelope ? '超過月額度的部分從待分配池扣' : '超支先從待分配池扣' }}
+          <span class="hint">目前待分配池 {{ money(period.pool.balance) }}</span>
         </span>
       </label>
 

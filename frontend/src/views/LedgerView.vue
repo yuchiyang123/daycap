@@ -14,7 +14,7 @@ import { dayLabel, money, signed } from '../lib/format'
 
 /**
  * 記帳：日額之外的傳統流水。兩種記法——
- * 1. 花費：扣在某個分類的額度上（例如 PSP → 娛樂），超過額度照規則從待定區扣。
+ * 1. 花費：扣在某個分類的額度上（例如 PSP → 娛樂），超過額度照規則從待分配池扣。
  * 2. 資產加減：直接動存款帳戶，不影響預算。
  * 下面把本期的回報、花費、資產加減、薪資調整依日期排在一起。
  */
@@ -196,7 +196,7 @@ async function remove(r: Row) {
         <span class="note">點這裡調整薪資</span>
       </button>
       <button class="tile tile-btn" :disabled="period.pool.balance <= 0" @click="adding = 'allocate'">
-        <span class="label">待定區</span>
+        <span class="label">待分配池</span>
         <span class="value" :class="period.pool.balance < 0 ? 'bad' : ''">{{ money(period.pool.balance) }}</span>
         <span class="note">{{ period.pool.balance > 0 ? '點這裡分配剩餘' : '沒有可分配的' }}</span>
       </button>

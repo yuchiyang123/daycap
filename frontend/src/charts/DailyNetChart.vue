@@ -6,7 +6,7 @@ import { money, shortDate, signed, weekday } from '../lib/format'
 import type { DayView } from '../api/types'
 
 /**
- * 每日 +/-：發散柱狀圖，藍 = 少花（進待定區），紅 = 超支。中線是 0。
+ * 每日 +/-：發散柱狀圖，藍 = 少花（進待分配池），紅 = 超支。中線是 0。
  * 還沒到的日子不畫柱，只留刻度；假日在軸下方標一個小方塊。
  * 每一欄整欄都是感應區，手機點一下就有數字。
  */
