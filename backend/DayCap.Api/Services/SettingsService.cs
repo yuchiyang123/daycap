@@ -22,6 +22,9 @@ public interface ISettingsService
 
     /// <summary>設定頁即時合計：用草稿算出新設定生效那一期的額度與每日類排程（§7、§8.2）。</summary>
     Task<SettingsEstimate> EstimateAsync(string userId, SettingsDto draft, CancellationToken ct = default);
+
+    /// <summary>月結的「下期調整」（§12.2 第 4 步）：改時段金額，存成從 effectiveFrom 起生效的新版本（呼叫端負責 SaveChanges）。</summary>
+    Task ApplySlotChangesAsync(string userId, List<Models.Dtos.SlotChange> changes, DateOnly effectiveFrom, string note, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -135,6 +138,41 @@ public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarServi
             CreatedAt = clock.UtcNow,
             Note = $"登記訂閱：{item.Name}",
             Document = SettingsJson.Serialize(withItem),
+        });
+    }
+
+    public async Task ApplySlotChangesAsync(string userId, List<Models.Dtos.SlotChange> changes, DateOnly effectiveFrom, string note, CancellationToken ct = default)
+    {
+        if (changes.Count == 0) return;
+        var profile = await EnsureProfileAsync(userId, ct);
+        var timeline = await GetTimelineAsync(userId, ct);
+        var today = clock.LogicalToday(timeline.For(clock.Today).Doc.DayStart);
+        if (effectiveFrom <= today) throw new ValidationException("下期調整的生效日要在今天之後。");
+        var latest = timeline.Latest.Doc;
+        var changed = latest with
+        {
+            Categories = latest.Categories.Select(c => c with
+            {
+                Slots = c.Slots.Select(sl =>
+                {
+                    var ch = changes.FirstOrDefault(x => x.CategoryId == c.Id && x.SlotId == sl.Id);
+                    return ch is null ? sl : sl with { WorkdayAmount = Math.Round(ch.WorkdayAmount, 0), HolidayAmount = Math.Round(ch.HolidayAmount, 0) };
+                }).ToList(),
+            }).ToList(),
+        };
+        var doc = Validate(ToDto(changed, profile.StartDate));
+        var estimate = await EstimateDocAsync(userId, doc, effectiveFrom, ct);
+        var over = estimate.Categories.FirstOrDefault(c => c.Over > 0);
+        if (over is not null)
+            throw new ValidationException($"「{doc.Categories[over.Index].Name}」調整後超過額度 {over.Over:N0}，請少調一點。");
+        db.SettingsVersions.Add(new SettingsVersion
+        {
+            UserId = userId,
+            EffectiveFrom = effectiveFrom,
+            CreatedOn = today,
+            CreatedAt = clock.UtcNow,
+            Note = note,
+            Document = SettingsJson.Serialize(doc),
         });
     }
 

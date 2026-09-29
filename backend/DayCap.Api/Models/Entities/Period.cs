@@ -24,6 +24,9 @@ public class BudgetPeriod
     public List<PoolTransfer> PoolTransfers { get; set; } = [];
     public List<IncomeAdjustment> IncomeAdjustments { get; set; } = [];
 
+    /// <summary>月結完成時間（§12.2）。月結後這期不能再改，要補登就記在當期並標明來源（§4.2）。</summary>
+    public DateTime? ClosedAt { get; set; }
+
     // ---- 舊欄位（已不使用）：收入改由設定版本決定 ----
     public int Income { get; set; }
     public DateTime? RebuiltAt { get; set; }
@@ -98,6 +101,9 @@ public class PoolTransfer : IFact
     public int PeriodId { get; set; }
     public DateOnly Date { get; set; }
     public int? CategoryId { get; set; }
+
+    /// <summary>因為某筆回報的護欄選擇而產生（刪掉那筆回報時一起作廢）。</summary>
+    public int? SourceEntryId { get; set; }
     public decimal Amount { get; set; }
     public string Note { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -166,4 +172,41 @@ public class PeriodFixedCharge
     public decimal Amount { get; set; }
     public DateOnly? DueDate { get; set; }
     public bool IsSubscription { get; set; }
+}
+
+/// <summary>
+/// 跨期結轉（事實）：延到下一期 / 分兩期還的超支、月結後帶到下一期的結餘或缺口（§10.2、§12.2）。
+/// 金額帶正負號（負 = 下一期要還）。TargetDate 落在哪一期，那一期的待分配池期初就多一行。
+/// </summary>
+public class PeriodCarryover : IFact
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = "";
+    public int SourcePeriodId { get; set; }
+    public DateOnly TargetDate { get; set; }
+    public decimal Amount { get; set; }
+    public string Label { get; set; } = "";
+    public int? SourceEntryId { get; set; }
+    public int? MonthEndId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? ReplacesId { get; set; }
+    public bool IsVoid { get; set; }
+}
+
+public enum ShortfallChoice { Pool, NextPeriod, Split, Savings }
+
+/// <summary>
+/// 月結快照（§12.2）：不可修改。Snapshot 是當時的結果（JSON），Decision / CarryAmount 是使用者的決定。
+/// </summary>
+public class MonthEnd
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = "";
+    public int PeriodId { get; set; }
+    public int? ReconciliationId { get; set; }
+    public decimal Result { get; set; }
+    public ShortfallChoice Decision { get; set; }
+    public decimal CarryAmount { get; set; }
+    public string Snapshot { get; set; } = "";
+    public DateTime ClosedAt { get; set; } = DateTime.UtcNow;
 }

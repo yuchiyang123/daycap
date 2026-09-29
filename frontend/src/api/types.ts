@@ -225,7 +225,12 @@ export interface EntryView {
   note: string | null
   isSubscription: boolean
   createdAt: string
+  /** 攤到幾天、平均每天少多少（§10.1） */
+  spreadDays: number
+  spreadPerDay: number
 }
+
+export type ShortfallChoice = 'Pool' | 'NextPeriod' | 'Split' | 'Savings'
 
 export interface FixedChargeView {
   fixedItemId: number | null
@@ -278,6 +283,36 @@ export interface PeriodView {
   reconciliations: ReconciliationView[]
   /** 給使用者看的提醒（例如自動分配沒執行） */
   warnings: string[]
+  /** 月結（§12.2）：這期已月結；上一期還沒月結時是它的 Id */
+  closed: boolean
+  previousPeriodNeedsClosing: number | null
+}
+
+export interface MonthEndReport {
+  periodId: number
+  startDate: string
+  endDate: string
+  closed: boolean
+  canClose: boolean
+  cannotCloseReason: string | null
+  needsReconciliation: boolean
+  result: number
+  previousResult: number | null
+  topOverspends: { label: string; days: number; total: number }[]
+  unexplained: number
+  slots: {
+    categoryId: number
+    categoryName: string
+    slotId: number
+    slotName: string
+    workdayAmount: number
+    holidayAmount: number
+    reportedDays: number
+    avgActual: number
+    avgPlanned: number
+  }[]
+  goals: { name: string; current: number; target: number; progress: number; targetDate: string; estimatedDate: string | null }[]
+  summary: { closedAt: string; result: number; decision: ShortfallChoice; carryAmount: number; message: string } | null
 }
 
 export interface ReconciliationView {
@@ -302,6 +337,9 @@ export interface CreateEntryRequest {
   subscription: { name: string; targetCategoryId: number; cycle: BillingCycle; dueDay: number | null } | null
   /** 用哪個帳戶付的（選填）：信用卡 = 欠款增加 */
   accountId?: number | null
+  /** 超過護欄下限、攤不完的部分怎麼處理（§10.2），預設待分配池 */
+  guardrail?: ShortfallChoice | null
+  guardrailAccountId?: number | null
 }
 
 export interface EntryPreview {

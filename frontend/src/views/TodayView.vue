@@ -27,6 +27,20 @@ const addingExtra = ref(false)
 const showIncome = ref(false)
 const showAllocate = ref(false)
 
+// ---- 月結（§12.2）----
+/** 發薪日前 5 天（本期最後 5 天）起可以月結 */
+const MONTH_END_OPEN_DAYS = 5
+const monthEndOpen = computed(() => {
+  if (period.value.closed) return false
+  const end = new Date(period.value.endDate + 'T00:00:00Z')
+  end.setUTCDate(end.getUTCDate() + 1 - MONTH_END_OPEN_DAYS)
+  const openFrom = end.toISOString().slice(0, 10)
+  return period.value.today >= openFrom
+})
+/** 上期還沒月結：先擋住，可以選擇晚點再說（只在這次開著時有效） */
+const gateDismissed = ref(false)
+const gated = computed(() => period.value.previousPeriodNeedsClosing !== null && !gateDismissed.value)
+
 async function confirmNoChange() {
   setPeriod(await confirmIncome(period.value.id))
   if (period.value.pool.balance > 0) showAllocate.value = true
@@ -43,6 +57,26 @@ async function confirmNoChange() {
         </p>
       </div>
     </header>
+
+    <section v-if="period.previousPeriodNeedsClosing !== null" class="panel gate">
+      <div>
+        <b>上一期還沒月結</b>
+        <p class="muted">先對帳、看結果、決定結餘或超支怎麼處理，這期的期初才會是對的。</p>
+      </div>
+      <div class="gate-actions">
+        <button v-if="gated" type="button" class="btn" @click="gateDismissed = true">晚點再說</button>
+        <RouterLink :to="`/month-end/${period.previousPeriodNeedsClosing}`" class="btn primary">去月結</RouterLink>
+      </div>
+    </section>
+
+    <template v-if="!gated">
+    <section v-if="monthEndOpen" class="panel gate soft">
+      <div>
+        <b>可以月結了</b>
+        <p class="muted">這期剩最後幾天。月結前記得先完整對帳一次。</p>
+      </div>
+      <RouterLink :to="`/month-end/${period.id}`" class="btn">月結</RouterLink>
+    </section>
 
     <p v-for="w in period.warnings" :key="w" class="notice-line">{{ w }}</p>
 
@@ -62,7 +96,7 @@ async function confirmNoChange() {
         </div>
         <div>
           <RouterLink to="/overview" class="pool-link">
-            <span class="label">待定區</span>
+            <span class="label">待分配池</span>
             <span class="side-v num" :class="period.pool.balance < 0 ? 'bad' : ''">{{ money(period.pool.balance) }}</span>
           </RouterLink>
           <button v-if="period.pool.balance > 0" type="button" class="btn quiet sm alloc" @click="showAllocate = true">分配剩餘</button>
@@ -74,7 +108,7 @@ async function confirmNoChange() {
       <div>
         <b>確認本期薪資</b>
         <p class="muted num">
-          設定的月收入 {{ money(period.baseIncome) }} 只是預設值。這期有請假（病假、事假）、加班或獎金嗎？調整後待定區會跟著變。
+          設定的月收入 {{ money(period.baseIncome) }} 只是預設值。這期有請假（病假、事假）、加班或獎金嗎？調整後待分配池會跟著變。
         </p>
       </div>
       <div class="payday-actions">
@@ -99,6 +133,8 @@ async function confirmNoChange() {
         </div>
       </section>
     </div>
+
+    </template>
 
     <ReportSheet
       v-if="reporting"
@@ -165,6 +201,26 @@ async function confirmNoChange() {
   flex-wrap: wrap;
   padding: 14px 16px;
   border-left: 3px solid var(--accent);
+}
+.gate {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-left: 3px solid var(--warn-text);
+}
+.gate.soft {
+  border-left-color: var(--accent);
+}
+.gate p {
+  font-size: 13px;
+  margin-top: 2px;
+}
+.gate-actions {
+  display: flex;
+  gap: 8px;
 }
 .payday p {
   font-size: 13px;

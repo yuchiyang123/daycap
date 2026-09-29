@@ -10,6 +10,7 @@ export const router = createRouter({
     { path: '/month', component: () => import('./views/MonthView.vue'), meta: { needsPeriod: true } },
     { path: '/ledger', component: () => import('./views/LedgerView.vue'), meta: { needsPeriod: true } },
     { path: '/overview', component: () => import('./views/OverviewView.vue'), meta: { needsPeriod: true } },
+    { path: '/month-end/:periodId', component: () => import('./views/MonthEndView.vue') },
     { path: '/assets', component: () => import('./views/AssetsView.vue') },
     // 設定頁沒有本期也要能用（還沒到開始日期時就是在這裡設定）
     { path: '/settings', component: () => import('./views/SettingsView.vue'), meta: { wantsPeriod: true } },

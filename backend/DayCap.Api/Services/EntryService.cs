@@ -3,6 +3,7 @@ using DayCap.Api.Data;
 using DayCap.Api.Models.Dtos;
 using DayCap.Api.Models.Entities;
 using DayCap.Api.Models.Settings;
+using Microsoft.EntityFrameworkCore;
 
 namespace DayCap.Api.Services;
 
@@ -17,6 +18,9 @@ public interface IEntryService
     Task<PeriodView> DeleteIncomeAdjustmentAsync(string userId, int periodId, int adjustmentId, CancellationToken ct = default);
     Task<PeriodView> ConfirmIncomeAsync(string userId, int periodId, CancellationToken ct = default);
     Task<PeriodView> AllocateAsync(string userId, int periodId, AllocateRequest req, CancellationToken ct = default);
+
+    /// <summary>§9.3 全天例外：mode = "zero"（今天全部 0）或 "planned"（今天全部照預算確認）。</summary>
+    Task<PeriodView> SetDayAsync(string userId, int periodId, DateOnly date, string mode, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -28,7 +32,9 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
     public async Task<PeriodView> CreateAsync(string userId, int periodId, CreateEntryRequest req, CancellationToken ct = default)
     {
         var period = await periods.LoadAsync(userId, periodId, ct);
+        EnsureOpen(period);
         var view = await periods.ComputeAsync(period, ct);
+        req = await BackdateIntoCurrentAsync(userId, period, view, req, ct);
         var entry = BuildEntry(period, view, req);
         if (req.AccountId is { } accountId)
         {
@@ -57,6 +63,116 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
         }
 
         period.Entries.Add(entry);
+        await db.SaveChangesAsync(ct);
+
+        var after = await periods.ComputeAsync(period, ct);
+        if (req.Guardrail is { } choice && choice != ShortfallChoice.Pool)
+        {
+            var excess = after.Entries.FirstOrDefault(e => e.Id == entry.Id)?.Unabsorbed ?? 0;
+            if (excess > 0)
+            {
+                await ApplyShortfallAsync(userId, period, entry.Id, excess, choice, req.GuardrailAccountId, after.Today, ct);
+                after = await periods.ComputeAsync(period, ct);
+            }
+        }
+        return after;
+    }
+
+    /// <summary>
+    /// 護欄（§10.2）：攤不完的超支原本從待分配池扣；使用者選了別的處理方式，就記一筆「補回待分配池」，
+    /// 再記下真正的去處——延到下一期、分兩期還（下一期與再下一期各一半）、或從存款吸收。
+    /// 這些事實都掛在那筆回報上，刪回報時一起作廢。
+    /// </summary>
+    private async Task ApplyShortfallAsync(string userId, BudgetPeriod period, int entryId, decimal excess, ShortfallChoice choice,
+        int? accountId, DateOnly today, CancellationToken ct)
+    {
+        var date = today < period.StartDate ? period.StartDate : today > period.EndDate ? period.EndDate : today;
+        var label = choice switch
+        {
+            ShortfallChoice.NextPeriod => "超支延到下一期",
+            ShortfallChoice.Split => "超支分兩期還",
+            _ => "超支從存款吸收",
+        };
+
+        if (choice == ShortfallChoice.Savings)
+        {
+            var account = await db.CashAccounts.FirstOrDefaultAsync(a => a.Id == accountId && a.UserId == userId && !a.IsArchived, ct)
+                          ?? throw new ValidationException("要選一個存款帳戶來吸收超支。");
+            if (AccountService.IsLiability(account.Type)) throw new ValidationException("不能用信用卡吸收超支。");
+            db.AssetAdjustments.Add(new AssetAdjustment
+            {
+                UserId = userId, CashAccountId = account.Id, Date = date, Amount = -excess, Note = label,
+                Source = "manual", PeriodId = period.Id, SourceEntryId = entryId, CreatedAt = clock.UtcNow,
+            });
+        }
+        else
+        {
+            var next = period.EndDate.AddDays(1);
+            var parts = choice == ShortfallChoice.Split
+                ? new[] { (next, Math.Ceiling(excess / 2)), (next.AddMonths(1), Math.Floor(excess / 2)) }
+                : new[] { (next, excess) };
+            foreach (var (target, amount) in parts)
+            {
+                if (amount <= 0) continue;
+                db.PeriodCarryovers.Add(new PeriodCarryover
+                {
+                    UserId = userId, SourcePeriodId = period.Id, TargetDate = target, Amount = -amount,
+                    Label = $"{period.StartDate:M/d} 那期{label}", SourceEntryId = entryId, CreatedAt = clock.UtcNow,
+                });
+            }
+        }
+
+        period.PoolTransfers.Add(new PoolTransfer
+        {
+            Date = date, Amount = excess, Note = label, SourceEntryId = entryId, CreatedAt = clock.UtcNow,
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// §4.2 補登到已月結的期間：快照不改，改記在本期，備註標明原本的日期。
+    /// 已過去的時段沒辦法回頭算，所以一律當成這個分類的額外花費。
+    /// </summary>
+    private async Task<CreateEntryRequest> BackdateIntoCurrentAsync(string userId, BudgetPeriod period, PeriodView view, CreateEntryRequest req, CancellationToken ct)
+    {
+        if (req.Date >= period.StartDate) return req;
+        var closed = await db.Periods.AsNoTracking()
+            .AnyAsync(p => p.UserId == userId && p.StartDate <= req.Date && p.EndDate >= req.Date && p.ClosedAt != null, ct);
+        if (!closed) return req;
+        var today = view.Today < period.StartDate ? period.StartDate : view.Today > period.EndDate ? period.EndDate : view.Today;
+        var note = string.IsNullOrWhiteSpace(req.Note) ? $"補登 {req.Date:M/d}" : $"補登 {req.Date:M/d}：{req.Note.Trim()}";
+        return req with { Date = today, SlotId = null, InputMode = EntryInputMode.Actual, Note = note };
+    }
+
+    private static void EnsureOpen(BudgetPeriod period)
+    {
+        if (period.ClosedAt is not null)
+            throw new ValidationException("這期已經月結，不能再改；要補登請記在本期（會標明原本的日期）。");
+    }
+
+    public async Task<PeriodView> SetDayAsync(string userId, int periodId, DateOnly date, string mode, CancellationToken ct = default)
+    {
+        if (mode is not ("zero" or "planned")) throw new ValidationException("不支援的全天操作。");
+        var period = await periods.LoadAsync(userId, periodId, ct);
+        EnsureOpen(period);
+        var view = await periods.ComputeAsync(period, ct);
+        var day = view.Days.FirstOrDefault(d => d.Date == date) ?? throw new ValidationException("日期不在這個週期內。");
+        var daily = view.Categories.Where(c => c.Mode == BudgetMode.Daily).Select(c => c.CategoryId).ToHashSet();
+        foreach (var slot in day.Slots.Where(s => s.EntryId is null && daily.Contains(s.CategoryId)))
+        {
+            period.Entries.Add(new Entry
+            {
+                Date = date,
+                CategoryId = slot.CategoryId,
+                SlotId = slot.SlotId,
+                InputMode = EntryInputMode.Actual,
+                InputAmount = mode == "zero" ? 0 : slot.Planned,
+                UsePool = true,
+                Note = mode == "zero" ? "今天全部 0" : "照預算確認",
+                TimeZoneId = "Asia/Taipei",
+                CreatedAt = clock.UtcNow,
+            });
+        }
         await db.SaveChangesAsync(ct);
         return await periods.ComputeAsync(period, ct);
     }
@@ -88,7 +204,9 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
     public async Task<PeriodView> DeleteAsync(string userId, int periodId, int entryId, CancellationToken ct = default)
     {
         var period = await periods.LoadAsync(userId, periodId, ct);
+        EnsureOpen(period);
         var target = period.Entries.Active().FirstOrDefault(e => e.Id == entryId) ?? throw new NotFoundException("找不到這筆回報。");
+        await VoidLinkedAsync(userId, period, entryId, ct);
         period.Entries.Add(new Entry
         {
             Date = target.Date,
@@ -104,9 +222,27 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
         return await periods.ComputeAsync(period, ct);
     }
 
+    /// <summary>刪回報時，把護欄選擇產生的「補回待分配池」、結轉、存款吸收一起作廢。</summary>
+    private async Task VoidLinkedAsync(string userId, BudgetPeriod period, int entryId, CancellationToken ct)
+    {
+        foreach (var t in period.PoolTransfers.Active().Where(t => t.SourceEntryId == entryId))
+        {
+            period.PoolTransfers.Add(new PoolTransfer { Date = t.Date, Note = "刪除", IsVoid = true, ReplacesId = t.Id, SourceEntryId = entryId, CreatedAt = clock.UtcNow });
+        }
+        foreach (var c in (await db.PeriodCarryovers.Where(c => c.UserId == userId && c.SourceEntryId == entryId).ToListAsync(ct)).Active())
+        {
+            db.PeriodCarryovers.Add(new PeriodCarryover { UserId = userId, SourcePeriodId = c.SourcePeriodId, TargetDate = c.TargetDate, Label = "刪除", IsVoid = true, ReplacesId = c.Id, SourceEntryId = entryId, CreatedAt = clock.UtcNow });
+        }
+        foreach (var a in (await db.AssetAdjustments.Where(a => a.UserId == userId && a.SourceEntryId == entryId).ToListAsync(ct)).Active())
+        {
+            db.AssetAdjustments.Add(new AssetAdjustment { UserId = userId, CashAccountId = a.CashAccountId, Date = a.Date, Note = "刪除", Source = a.Source, IsVoid = true, ReplacesId = a.Id, SourceEntryId = entryId, CreatedAt = clock.UtcNow });
+        }
+    }
+
     public async Task<PeriodView> AddTransferAsync(string userId, int periodId, CreatePoolTransferRequest req, CancellationToken ct = default)
     {
         var period = await periods.LoadAsync(userId, periodId, ct);
+        EnsureOpen(period);
         var amount = Math.Round(req.Amount, 0);
         if (amount == 0 || Math.Abs(amount) > 100_000_000) throw new ValidationException("金額不正確。");
         if (req.Date < period.StartDate || req.Date > period.EndDate) throw new ValidationException("日期不在這個週期內。");
@@ -125,6 +261,7 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
     public async Task<PeriodView> DeleteTransferAsync(string userId, int periodId, int transferId, CancellationToken ct = default)
     {
         var period = await periods.LoadAsync(userId, periodId, ct);
+        EnsureOpen(period);
         var t = period.PoolTransfers.Active().FirstOrDefault(x => x.Id == transferId) ?? throw new NotFoundException("找不到這筆調整。");
         period.PoolTransfers.Add(new PoolTransfer
         {
@@ -142,6 +279,7 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
     public async Task<PeriodView> AddIncomeAdjustmentAsync(string userId, int periodId, CreateIncomeAdjustmentRequest req, CancellationToken ct = default)
     {
         var period = await periods.LoadAsync(userId, periodId, ct);
+        EnsureOpen(period);
         var amount = Math.Round(req.Amount, 0);
         if (amount is <= 0 or > 100_000_000) throw new ValidationException("金額要大於 0。");
         if (req.Days is < 0 or > 31 || req.Hours is < 0 or > 400) throw new ValidationException("天數或時數超出範圍。");
@@ -164,6 +302,7 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
     public async Task<PeriodView> DeleteIncomeAdjustmentAsync(string userId, int periodId, int adjustmentId, CancellationToken ct = default)
     {
         var period = await periods.LoadAsync(userId, periodId, ct);
+        EnsureOpen(period);
         var adj = period.IncomeAdjustments.Active().FirstOrDefault(a => a.Id == adjustmentId) ?? throw new NotFoundException("找不到這筆薪資調整。");
         period.IncomeAdjustments.Add(new IncomeAdjustment
         {
@@ -192,6 +331,7 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
     public async Task<PeriodView> AllocateAsync(string userId, int periodId, AllocateRequest req, CancellationToken ct = default)
     {
         var period = await periods.LoadAsync(userId, periodId, ct);
+        EnsureOpen(period);
         var view = await periods.ComputeAsync(period, ct);
         var amount = Math.Floor(req.Amount);
         if (amount <= 0) throw new ValidationException("金額要大於 0。");

@@ -261,6 +261,8 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
         await EnsureMigratedAsync(userId, ct);
         var today = await settings.LogicalTodayAsync(userId, ct);
         if (req.Date > today) throw new ValidationException("對帳日期不能是未來。");
+        if (await db.Periods.AnyAsync(p => p.UserId == userId && p.StartDate <= req.Date && p.EndDate >= req.Date && p.ClosedAt != null, ct))
+            throw new ValidationException("那一期已經月結，不能再加對帳（§4.2）。");
         var accounts = await db.CashAccounts.Where(a => a.UserId == userId && !a.IsArchived).ToDictionaryAsync(a => a.Id, ct);
         if (req.Lines.Count == 0) throw new ValidationException("至少要填一個帳戶的餘額。");
         foreach (var l in req.Lines)

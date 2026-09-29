@@ -18,8 +18,13 @@ public record SettingsDocument(
     // % 算在哪個基準上（§7）；null = 舊設定，當成「佔收入」
     PercentBase? PercentBase = null,
     // 固定收入 / 非固定收入（非固定用上期實際收入當 % 基準）；null = 固定
-    IncomeKind? IncomeKind = null)
+    IncomeKind? IncomeKind = null,
+    // 超支護欄（§10.2）：每個時段最多被攤到原本金額的幾 %；null = 50
+    decimal? GuardrailFloorPercent = null)
 {
+    [JsonIgnore]
+    public decimal FloorPercent => GuardrailFloorPercent ?? 50m;
+
     [JsonIgnore]
     public PercentBase Base => PercentBase ?? global::DayCap.Api.Models.Settings.PercentBase.Income;
 

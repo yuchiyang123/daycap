@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import Sheet from './Sheet.vue'
 import ImpactPreview from './ImpactPreview.vue'
+import ShortfallPicker from './ShortfallPicker.vue'
+import type { ShortfallChoice } from '../api/types'
 import { createEntry, getAccounts } from '../api/endpoints'
 import type { AccountView } from '../api/types'
 import { onMounted } from 'vue'
@@ -62,6 +64,12 @@ const request = computed<CreateEntryRequest | null>(() => {
 })
 
 const { preview, loading } = usePreview(() => period.value.id, request)
+const shortfall = ref<ShortfallChoice>('Pool')
+const shortfallAccount = ref<number | null>(null)
+const shortfallExtra = () =>
+  preview.value && preview.value.entry.unabsorbed > 0
+    ? { guardrail: shortfall.value, guardrailAccountId: shortfall.value === 'Savings' ? shortfallAccount.value : null }
+    : {}
 
 async function submit() {
   if (!request.value) return
@@ -76,6 +84,7 @@ async function submit() {
       ...request.value,
       subscription: isSub.value ? { name: subName.value.trim(), targetCategoryId: subTarget.value, cycle: subCycle.value, dueDay: null } : null,
       accountId: accountId.value,
+      ...shortfallExtra(),
     }
     setPeriod(await createEntry(period.value.id, body))
     emit('close')
@@ -166,6 +175,12 @@ async function submit() {
       </div>
 
       <ImpactPreview :preview="preview" :loading="loading" :envelope="isEnvelope" />
+      <ShortfallPicker
+        v-if="preview && preview.entry.unabsorbed > 0"
+        v-model:choice="shortfall"
+        v-model:account-id="shortfallAccount"
+        :amount="preview.entry.unabsorbed"
+      />
       <p v-if="error" class="error-box">{{ error }}</p>
 
       <div class="actions">

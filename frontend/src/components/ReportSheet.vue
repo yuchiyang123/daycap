@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import Sheet from './Sheet.vue'
 import ImpactPreview from './ImpactPreview.vue'
+import ShortfallPicker from './ShortfallPicker.vue'
+import type { ShortfallChoice } from '../api/types'
 import { createEntry, deleteEntry, getAccounts } from '../api/endpoints'
 import type { AccountView, CreateEntryRequest, SlotView } from '../api/types'
 import { onMounted } from 'vue'
@@ -54,6 +56,12 @@ const request = computed<CreateEntryRequest | null>(() => {
 })
 
 const { preview, loading } = usePreview(() => period.value.id, request)
+const shortfall = ref<ShortfallChoice>('Pool')
+const shortfallAccount = ref<number | null>(null)
+const shortfallExtra = () =>
+  preview.value && preview.value.entry.unabsorbed > 0
+    ? { guardrail: shortfall.value, guardrailAccountId: shortfall.value === 'Savings' ? shortfallAccount.value : null }
+    : {}
 
 function quick(v: number) {
   actualMode.value = true
@@ -65,7 +73,7 @@ async function submit() {
   saving.value = true
   error.value = null
   try {
-    setPeriod(await createEntry(period.value.id, { ...request.value, accountId: actualMode.value ? accountId.value : null }))
+    setPeriod(await createEntry(period.value.id, { ...request.value, accountId: actualMode.value ? accountId.value : null, ...shortfallExtra() }))
     emit('close')
   } catch (e) {
     error.value = (e as Error).message
@@ -146,6 +154,12 @@ async function clearReport() {
       </div>
 
       <ImpactPreview :preview="preview" :loading="loading" />
+      <ShortfallPicker
+        v-if="preview && preview.entry.unabsorbed > 0"
+        v-model:choice="shortfall"
+        v-model:account-id="shortfallAccount"
+        :amount="preview.entry.unabsorbed"
+      />
 
       <p v-if="error" class="error-box">{{ error }}</p>
 

@@ -28,7 +28,10 @@ public record PeriodView(
     List<PoolTransferView> Transfers,
     List<ReconciliationView> Reconciliations,
     // 給使用者看的提醒（例如自動分配沒執行）
-    List<string> Warnings);
+    List<string> Warnings,
+    // 月結（§12.2）：這期是否已月結；上一期還沒月結時帶它的 Id（這期還不能正式啟用）
+    bool Closed = false,
+    int? PreviousPeriodNeedsClosing = null);
 
 /// <summary>對帳結果：Diff = 實際 − 預期；負的依超支規則處理（FromPool / Spread / Unabsorbed）。</summary>
 public record ReconciliationView(int Id, DateOnly Date, decimal Expected, decimal Actual, decimal Diff, decimal FromPool, decimal Spread, decimal Unabsorbed);
@@ -95,7 +98,10 @@ public record EntryView(
     decimal EnvelopeOver,
     string? Note,
     bool IsSubscription,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    // 攤到幾天、平均每天少多少（§10.1 預覽「接下來 16 天每天少 75」）
+    int SpreadDays,
+    decimal SpreadPerDay);
 
 public record FixedChargeView(int? FixedItemId, int CategoryId, string Name, decimal Amount, DateOnly? DueDate, bool IsSubscription);
 
@@ -113,7 +119,11 @@ public record CreateEntryRequest(
     string? Note,
     SubscriptionRequest? Subscription,
     // 用哪個帳戶付的（選填，§5）：信用卡 = 欠款增加
-    int? AccountId = null);
+    int? AccountId = null,
+    // 超支超過護欄下限、後面攤不完的部分怎麼處理（§10.2）；null = 待分配池
+    ShortfallChoice? Guardrail = null,
+    // Guardrail = Savings 時從哪個帳戶吸收
+    int? GuardrailAccountId = null);
 
 /// <summary>回報時順便把它登記成訂閱：下個週期起變成固定支出。</summary>
 public record SubscriptionRequest(string Name, int TargetCategoryId, BillingCycle Cycle, int? DueDay);

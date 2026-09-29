@@ -81,6 +81,10 @@ public static class BudgetEngine
         {
             lines.Add(new PoolLine(v.Date, v.Amount, "Settings", v.Label, null, null));
         }
+        foreach (var c in plan.CarryIns)
+        {
+            lines.Add(new PoolLine(c.Date, c.Amount, "Carryover", c.Label, null, null));
+        }
         var opening = lines.Sum(l => l.Amount);
         var pool = opening;
 
@@ -103,7 +107,7 @@ public static class BudgetEngine
         {
             if (ev.Recon is { } rd)
             {
-                reconViews.Add(ApplyReconciliation(rd, categories, allocations, effective, reportedKeys, toLogicalDate, ref pool, lines));
+                reconViews.Add(ApplyReconciliation(rd, categories, allocations, effective, reportedKeys, toLogicalDate, plan.FloorPercent, ref pool, lines));
                 continue;
             }
 
@@ -158,7 +162,7 @@ public static class BudgetEngine
             var view = cat.Mode switch
             {
                 BudgetMode.Envelope => ApplyEnvelope(e, cat, envelopeBudget[cat.CategoryId], envelopeSpent, ref pool, lines),
-                _ => ApplyDaily(e, cat, allocations, allocByKey, effective, reportedKeys, toLogicalDate, ref pool, lines),
+                _ => ApplyDaily(e, cat, allocations, allocByKey, effective, reportedKeys, toLogicalDate, plan.FloorPercent, ref pool, lines),
             };
             entryViews[e.Id] = view;
         }
@@ -263,6 +267,7 @@ public static class BudgetEngine
         Dictionary<(DateOnly, int), decimal> effective,
         HashSet<(DateOnly, int)> reportedKeys,
         Func<DateTime, DateOnly> toLogicalDate,
+        decimal floorPercent,
         ref decimal pool,
         List<PoolLine> lines)
     {
@@ -291,17 +296,14 @@ public static class BudgetEngine
                 var daily = categories.Where(c => c.Mode == BudgetMode.Daily).Select(c => c.CategoryId).ToHashSet();
                 var cutoff = Max(r.Date, toLogicalDate(r.CreatedAt));
                 var targets = allocations
-                    .Where(a => daily.Contains(a.CategoryId) && a.Date > cutoff
-                                && !reportedKeys.Contains((a.Date, a.SlotId)) && effective[(a.Date, a.SlotId)] > 0)
+                    .Where(a => daily.Contains(a.CategoryId) && a.Date > cutoff && !reportedKeys.Contains((a.Date, a.SlotId)))
                     .ToList();
-                var shares = Distribute(rest, targets.Select(a => effective[(a.Date, a.SlotId)]).ToList());
-                for (var i = 0; i < targets.Count; i++) effective[(targets[i].Date, targets[i].SlotId)] -= shares[i];
-                spread = shares.Sum();
+                (spread, _, _) = SpreadOverDays(rest, targets, effective, floorPercent);
                 unabsorbed = rest - spread;
                 if (unabsorbed > 0)
                 {
                     pool -= unabsorbed;
-                    lines.Add(new PoolLine(r.Date, -unabsorbed, "Reconcile", "對帳差異，後續額度不夠攤", null, null));
+                    lines.Add(new PoolLine(r.Date, -unabsorbed, "Reconcile", "對帳差異超過護欄下限，從待分配池扣", null, null));
                 }
             }
         }
@@ -322,7 +324,7 @@ public static class BudgetEngine
             lines.Add(new PoolLine(e.Date, -over, "EnvelopeOver", $"{cat.Name}超過月額度", e.Id, null));
         }
         return new EntryView(e.Id, e.Date, cat.CategoryId, cat.Name, null, null, e.InputMode, e.InputAmount,
-            actual, 0, actual, e.UsePool, 0, 0, 0, 0, envelopeOver, e.Note, e.IsSubscription, e.CreatedAt);
+            actual, 0, actual, e.UsePool, 0, 0, 0, 0, envelopeOver, e.Note, e.IsSubscription, e.CreatedAt, 0, 0);
     }
 
     private static EntryView ApplyDaily(
@@ -333,6 +335,7 @@ public static class BudgetEngine
         Dictionary<(DateOnly, int), decimal> effective,
         HashSet<(DateOnly, int)> reportedKeys,
         Func<DateTime, DateOnly> toLogicalDate,
+        decimal floorPercent,
         ref decimal pool,
         List<PoolLine> lines)
     {
@@ -349,6 +352,7 @@ public static class BudgetEngine
 
         decimal fromPool = 0, spread = 0, unabsorbed = 0;
         var spreadSlots = 0;
+        var spreadDays = 0;
         var label = slotName is null ? $"{cat.Name}額外花費" : $"{cat.Name}・{slotName}";
 
         if (diff < 0)
@@ -373,31 +377,92 @@ public static class BudgetEngine
             {
                 var cutoff = Max(e.Date, toLogicalDate(e.CreatedAt));
                 var targets = allocations
-                    .Where(a => a.CategoryId == cat.CategoryId && a.Date > cutoff
-                                && !reportedKeys.Contains((a.Date, a.SlotId))
-                                && effective[(a.Date, a.SlotId)] > 0)
+                    .Where(a => a.CategoryId == cat.CategoryId && a.Date > cutoff && !reportedKeys.Contains((a.Date, a.SlotId)))
                     .ToList();
+                (spread, spreadSlots, spreadDays) = SpreadOverDays(rest, targets, effective, floorPercent);
 
-                var shares = Distribute(rest, targets.Select(a => effective[(a.Date, a.SlotId)]).ToList());
-                for (var i = 0; i < targets.Count; i++)
-                {
-                    if (shares[i] == 0) continue;
-                    effective[(targets[i].Date, targets[i].SlotId)] -= shares[i];
-                    spread += shares[i];
-                    spreadSlots++;
-                }
-
+                // 攤不完的（後面沒天數，或會把某天扣到護欄下限以下，§10.2）先從待分配池扣；
+                // 使用者回報時選了「延到下一期／分兩期／從存款吸收」的話，服務層會另外記事實把它補回來
                 unabsorbed = rest - spread;
                 if (unabsorbed > 0)
                 {
                     pool -= unabsorbed;
-                    lines.Add(new PoolLine(e.Date, -unabsorbed, "Unabsorbed", $"{label}超支，後續額度不夠攤", e.Id, null));
+                    lines.Add(new PoolLine(e.Date, -unabsorbed, "Unabsorbed", $"{label}超支，超過護欄下限或後面沒天數可攤", e.Id, null));
                 }
             }
         }
 
         return new EntryView(e.Id, e.Date, cat.CategoryId, cat.Name, e.SlotId, slotName, e.InputMode, e.InputAmount,
-            actual, planned, diff, e.UsePool, fromPool, spread, spreadSlots, unabsorbed, 0, e.Note, e.IsSubscription, e.CreatedAt);
+            actual, planned, diff, e.UsePool, fromPool, spread, spreadSlots, unabsorbed, 0, e.Note, e.IsSubscription, e.CreatedAt,
+            spreadDays, spreadDays > 0 ? Math.Round(spread / spreadDays, 0) : 0);
+    }
+
+    /// <summary>
+    /// 超支攤回（§10.1）：從剩餘天數「平均」扣——每天先分到一樣多（有上限的天數用完就換別天），
+    /// 同一天內再依各時段目前的金額比例分。每個時段最多扣到原本排程的 floorPercent%（護欄 §10.2）。
+    /// 回傳實際攤掉的金額、動到幾個時段、動到幾天；攤不完的由呼叫端處理。
+    /// </summary>
+    public static (decimal Spread, int Slots, int Days) SpreadOverDays(
+        decimal amount, List<DayAllocation> targets, Dictionary<(DateOnly, int), decimal> effective, decimal floorPercent)
+    {
+        decimal Capacity(DayAllocation a) =>
+            Math.Max(0, effective[(a.Date, a.SlotId)] - Math.Ceiling(a.Planned * floorPercent / 100m));
+
+        var days = targets.Where(a => Capacity(a) > 0).GroupBy(a => a.Date).OrderBy(g => g.Key)
+            .Select(g => (Date: g.Key, Slots: g.OrderBy(a => a.SortOrder).ThenBy(a => a.SlotId).ToList()))
+            .ToList();
+        var dayShares = EqualCapped(Math.Floor(amount), days.Select(d => d.Slots.Sum(Capacity)).ToList());
+
+        decimal spread = 0;
+        int slots = 0, touchedDays = 0;
+        for (var i = 0; i < days.Count; i++)
+        {
+            if (dayShares[i] <= 0) continue;
+            touchedDays++;
+            var caps = days[i].Slots.Select(Capacity).ToList();
+            var slotShares = Distribute(dayShares[i], caps);
+            for (var j = 0; j < caps.Count; j++)
+            {
+                if (slotShares[j] <= 0) continue;
+                var a = days[i].Slots[j];
+                effective[(a.Date, a.SlotId)] -= slotShares[j];
+                spread += slotShares[j];
+                slots++;
+            }
+        }
+        return (spread, slots, touchedDays);
+    }
+
+    /// <summary>把 amount（整數元）平均分給各天，每天不超過自己的上限；除不盡的零頭從前面的天數開始一天 1 元。</summary>
+    public static List<decimal> EqualCapped(decimal amount, IReadOnlyList<decimal> caps)
+    {
+        var result = Enumerable.Repeat(0m, caps.Count).ToList();
+        var remaining = Math.Floor(amount);
+        var active = Enumerable.Range(0, caps.Count).Where(i => caps[i] >= 1).ToList();
+        while (remaining > 0 && active.Count > 0)
+        {
+            var share = Math.Floor(remaining / active.Count);
+            if (share == 0)
+            {
+                foreach (var i in active)
+                {
+                    if (remaining <= 0) break;
+                    result[i] += 1;
+                    remaining -= 1;
+                }
+                break;
+            }
+            var next = new List<int>();
+            foreach (var i in active)
+            {
+                var take = Math.Min(share, Math.Floor(caps[i] - result[i]));
+                result[i] += take;
+                remaining -= take;
+                if (caps[i] - result[i] >= 1) next.Add(i);
+            }
+            active = next;
+        }
+        return result;
     }
 
     /// <summary>

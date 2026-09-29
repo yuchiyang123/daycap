@@ -30,6 +30,12 @@ public sealed class PeriodPlan
 
     /// <summary>給使用者看的提醒，例如「分配器尚未實作，先用手動金額」。</summary>
     public List<string> Warnings { get; init; } = [];
+
+    /// <summary>超支護欄（§10.2）：每個時段最多被攤到原本的幾 %。</summary>
+    public decimal FloorPercent { get; init; } = 50m;
+
+    /// <summary>從前面的期間結轉過來的金額（月結、延後的超支），由 PeriodService 填入。</summary>
+    public List<PlanLine> CarryIns { get; } = [];
 }
 
 /// <summary>
@@ -206,6 +212,7 @@ public static class PlanBuilder
             HolidayCount = allDays.Count(IsHoliday),
             GapLabels = gapLabels,
             Warnings = warnings.Distinct().ToList(),
+            FloorPercent = startDoc.FloorPercent,
         };
     }
 }

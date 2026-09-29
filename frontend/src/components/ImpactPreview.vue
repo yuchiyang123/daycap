@@ -13,18 +13,18 @@ const lines = computed(() => {
   const out: { text: string; tone?: 'good' | 'bad' }[] = []
   if (props.envelope) {
     out.push({ text: `這個分類本期剩 ${money(p.categoryRemainingBefore)} → ${money(p.categoryRemainingAfter)}` })
-    if (e.envelopeOver > 0) out.push({ text: `超過月額度 ${money(e.envelopeOver)}，從待定區扣`, tone: 'bad' })
+    if (e.envelopeOver > 0) out.push({ text: `超過月額度 ${money(e.envelopeOver)}，從待分配池扣`, tone: 'bad' })
     return out
   }
   if (e.diff === 0) {
     out.push({ text: '剛好照預算，不影響其他日子' })
   } else if (e.diff < 0) {
-    out.push({ text: `少花 ${money(-e.diff)}，存進待定區`, tone: 'good' })
+    out.push({ text: `少花 ${money(-e.diff)}，存進待分配池`, tone: 'good' })
   } else {
     out.push({ text: `超支 ${money(e.diff)}`, tone: 'bad' })
-    if (e.fromPool > 0) out.push({ text: `待定區先扣 ${money(e.fromPool)}` })
-    if (e.spread > 0) out.push({ text: `之後 ${e.spreadSlots} 個時段依比例遞減，共少 ${money(e.spread)}` })
-    if (e.unabsorbed > 0) out.push({ text: `後面沒有額度可攤，待定區再扣 ${money(e.unabsorbed)}`, tone: 'bad' })
+    if (e.fromPool > 0) out.push({ text: `待分配池先扣 ${money(e.fromPool)}` })
+    if (e.spread > 0) out.push({ text: `接下來 ${e.spreadDays} 天每天少約 ${money(e.spreadPerDay)}，共 ${money(e.spread)}` })
+    if (e.unabsorbed > 0) out.push({ text: `${money(e.unabsorbed)} 攤不下去（護欄：每個時段最多扣到一半），下面選怎麼處理`, tone: 'bad' })
   }
   return out
 })
@@ -35,7 +35,7 @@ const lines = computed(() => {
     <template v-if="preview">
       <p v-for="(l, i) in lines" :key="i" :class="l.tone">{{ l.text }}</p>
       <div class="pool num">
-        <span>待定區</span>
+        <span>待分配池</span>
         <span>
           {{ money(preview.poolBefore) }} → <b>{{ money(preview.poolAfter) }}</b>
           <span class="muted">（{{ signed(preview.poolAfter - preview.poolBefore) }}）</span>

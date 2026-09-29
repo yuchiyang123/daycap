@@ -58,6 +58,11 @@ public class PeriodsController(IPeriodService periods, IEntryService entries) : 
     public Task<PeriodView> ConfirmIncome(int id, CancellationToken ct) =>
         entries.ConfirmIncomeAsync(User.GetUserId(), id, ct);
 
+    /// <summary>§9.3 全天例外：mode = zero（今天全部 0）或 planned（今天全部照預算）。</summary>
+    [HttpPost("{id:int}/days/{date}/{mode}")]
+    public Task<PeriodView> SetDay(int id, DateOnly date, string mode, CancellationToken ct) =>
+        entries.SetDayAsync(User.GetUserId(), id, date, mode, ct);
+
     [HttpPost("{id:int}/allocate")]
     public Task<PeriodView> Allocate(int id, AllocateRequest req, CancellationToken ct) =>
         entries.AllocateAsync(User.GetUserId(), id, req, ct);

@@ -21,6 +21,8 @@ import type {
   SettingsDto,
   SettingsView,
   SettingsEstimate,
+  MonthEndReport,
+  ShortfallChoice,
   AllocationCell,
   AllocationResult,
 } from './types'
@@ -119,3 +121,12 @@ export const estimateSettings = (draft: SettingsDto) => api<SettingsEstimate>('/
 /** 分配器由你實作（§8.1）；還沒實作時後端回 501，這裡會丟出含「分配器尚未實作」訊息的錯誤 */
 export const allocatePreview = (budget: number, cells: AllocationCell[], roundingUnit: number, releasedShareReceiverKey: string | null = null) =>
   api<AllocationResult>('/api/settings/allocate-preview', { method: 'POST', body: { budget, cells, roundingUnit, releasedShareReceiverKey } })
+
+// ---- 全天例外（§9.3）、月結（§12.2）----
+export const setDay = (periodId: number, date: string, mode: 'zero' | 'planned') =>
+  api<PeriodView>(`/api/periods/${periodId}/days/${date}/${mode}`, { method: 'POST' })
+export const getMonthEnd = (periodId: number) => api<MonthEndReport>(`/api/month-end/${periodId}`)
+export const closeMonth = (
+  periodId: number,
+  body: { decision: ShortfallChoice; accountId: number | null; slotChanges: { categoryId: number; slotId: number; workdayAmount: number; holidayAmount: number }[] },
+) => api<MonthEndReport>(`/api/month-end/${periodId}`, { method: 'POST', body })

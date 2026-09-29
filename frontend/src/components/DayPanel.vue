@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type { DayView, SlotView } from '../api/types'
 import { store, setPeriod } from '../lib/store'
-import { deleteEntry } from '../api/endpoints'
+import { deleteEntry, setDay } from '../api/endpoints'
 import { money, signed } from '../lib/format'
 
 /**
@@ -45,6 +45,21 @@ function status(s: SlotView): { text: string; tone: string } {
 }
 
 const removing = ref<number | null>(null)
+
+// ---- 全天例外（§9.3）：今天全部 0 / 今天全部照預算，按兩次確認 ----
+const hasUnreported = computed(() => props.day.slots.some((s) => s.actual === null))
+const armed = ref<'zero' | 'planned' | null>(null)
+async function wholeDay(mode: 'zero' | 'planned') {
+  if (armed.value !== mode) {
+    armed.value = mode
+    setTimeout(() => {
+      if (armed.value === mode) armed.value = null
+    }, 3000)
+    return
+  }
+  armed.value = null
+  setPeriod(await setDay(period.value.id, props.day.date, mode))
+}
 async function removeExtra(id: number) {
   if (removing.value !== id) {
     removing.value = id
@@ -61,6 +76,11 @@ async function removeExtra(id: number) {
 <template>
   <div class="day">
     <div v-if="groups.length === 0" class="panel empty">這天沒有排每日額度。</div>
+    <div v-else-if="hasUnreported && day.status !== 'future' && !period.closed" class="whole-day">
+      <button type="button" class="btn sm" @click="wholeDay('zero')">{{ armed === 'zero' ? '確認：這天全部 0' : '這天全部 0' }}</button>
+      <button type="button" class="btn sm" @click="wholeDay('planned')">{{ armed === 'planned' ? '確認：全部照預算' : '這天全部照預算' }}</button>
+      <span class="muted small">在家吃、有人請客就按「全部 0」</span>
+    </div>
 
     <div v-for="g in groups" :key="g.id" class="panel">
       <div class="g-head">
@@ -98,8 +118,8 @@ async function removeExtra(id: number) {
             </span>
             <span class="s-status muted">
               {{ e!.categoryName }}
-              <template v-if="e!.fromPool">・待定區 {{ signed(-e!.fromPool) }}</template>
-              <template v-if="e!.spread">・攤到 {{ e!.spreadSlots }} 個時段</template>
+              <template v-if="e!.fromPool">・待分配池 {{ signed(-e!.fromPool) }}</template>
+              <template v-if="e!.spread">・之後 {{ e!.spreadDays }} 天每天少約 {{ money(e!.spreadPerDay) }}</template>
               <template v-if="e!.envelopeOver">・超出月額度 {{ money(e!.envelopeOver) }}</template>
             </span>
           </span>
@@ -119,6 +139,15 @@ async function removeExtra(id: number) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.whole-day {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.small {
+  font-size: 12px;
 }
 .g-head {
   display: flex;

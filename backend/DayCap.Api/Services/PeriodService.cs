@@ -139,6 +139,14 @@ public class PeriodService(
             }
         }
         var plan = PlanBuilder.Build(period.StartDate, period.EndDate, timeline, days, previousIncome);
+        // 從前面期間結轉過來的（月結、延後的超支，§10.2、§12.2）
+        var carryovers = (await db.PeriodCarryovers.AsNoTracking()
+                .Where(c => c.UserId == period.UserId && c.TargetDate >= period.StartDate && c.TargetDate <= period.EndDate)
+                .ToListAsync(ct)).Active();
+        foreach (var c in carryovers.OrderBy(c => c.CreatedAt))
+        {
+            plan.CarryIns.Add(new PlanLine(period.StartDate, c.Amount, c.Label));
+        }
         var dayStart = timeline.For(clock.Today).Doc.DayStart;
         var today = clock.LogicalToday(dayStart);
         PeriodView Run(IReadOnlyList<ReconDiff> diffs) =>
@@ -149,7 +157,7 @@ public class PeriodService(
         var full = recons.Where(r => r.IsFull).OrderBy(r => r.Date).ThenBy(r => r.CreatedAt).ToList();
         var inPeriod = full.Where(r => r.Date >= period.StartDate && r.Date <= period.EndDate).ToList();
 
-        var view = Run([]);
+        var view = await DecorateAsync(Run([]), period, ct);
         if (inPeriod.Count == 0 || depth > 2) return view;
 
         var types = await db.CashAccounts.AsNoTracking().Where(a => a.UserId == period.UserId).ToDictionaryAsync(a => a.Id, a => a.Type, ct);
@@ -170,10 +178,27 @@ public class PeriodService(
             }
             var same = next.Count == diffs.Count && next.Zip(diffs).All(p => p.First.Id == p.Second.Id && p.First.Expected == p.Second.Expected);
             diffs = next;
-            view = Run(diffs);
+            view = await DecorateAsync(Run(diffs), period, ct);
             if (same) break;
         }
         return view;
+    }
+
+    /// <summary>月結狀態：這期是否已月結、上一期是否還沒月結（§12.2「上一期沒結，這一期不能正式啟用」）。</summary>
+    private async Task<PeriodView> DecorateAsync(PeriodView view, BudgetPeriod period, CancellationToken ct)
+    {
+        var profile = await db.Profiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == period.UserId, ct);
+        var minStart = profile?.StartDate ?? DateOnly.MinValue;
+        var previous = await db.Periods.AsNoTracking()
+            .Where(p => p.UserId == period.UserId && p.EndDate < period.StartDate && p.StartDate >= minStart)
+            .OrderByDescending(p => p.EndDate)
+            .Select(p => new { p.Id, p.ClosedAt })
+            .FirstOrDefaultAsync(ct);
+        return view with
+        {
+            Closed = period.ClosedAt is not null,
+            PreviousPeriodNeedsClosing = previous is { ClosedAt: null } ? previous.Id : null,
+        };
     }
 
     /// <summary>(from, to] 之間已知的收支（收入為正、支出為負）。跨到其他期間的日子，用那一期的重播結果。</summary>
@@ -281,6 +306,7 @@ public class PeriodService(
                     PeriodId = period.Id,
                     PopupOn = today,
                     Payload = JsonSerializer.Serialize(new SettlementPayload($"{period.StartDate:M/d}–{period.EndDate:M/d}", balance, 0, null)),
+                    // 內容見 NotificationService：提醒完成月結（§12.2）
                     CreatedAt = clock.UtcNow,
                 });
             }

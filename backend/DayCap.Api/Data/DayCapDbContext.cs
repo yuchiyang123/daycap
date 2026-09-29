@@ -23,6 +23,8 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<Reconciliation> Reconciliations => Set<Reconciliation>();
     public DbSet<ReconciliationLine> ReconciliationLines => Set<ReconciliationLine>();
     public DbSet<AccountTransfer> AccountTransfers => Set<AccountTransfer>();
+    public DbSet<PeriodCarryover> PeriodCarryovers => Set<PeriodCarryover>();
+    public DbSet<MonthEnd> MonthEnds => Set<MonthEnd>();
 
     public DbSet<CashAccount> CashAccounts => Set<CashAccount>();
     public DbSet<Holding> Holdings => Set<Holding>();
@@ -93,6 +95,12 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
         b.Entity<PoolTransfer>().Property(x => x.Note).HasMaxLength(120);
 
         b.Entity<CashAccount>().HasIndex(x => x.UserId);
+        b.Entity<PeriodCarryover>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.TargetDate });
+            e.Property(x => x.Label).HasMaxLength(120);
+        });
+        b.Entity<MonthEnd>().HasIndex(x => new { x.UserId, x.PeriodId }).IsUnique();
         b.Entity<Reconciliation>(e =>
         {
             e.HasIndex(x => new { x.UserId, x.Date });

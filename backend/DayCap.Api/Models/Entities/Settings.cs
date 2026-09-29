@@ -40,6 +40,12 @@ public class UserProfile
     /// <summary>下一個可用的分類 / 時段 / 固定項目 Id（跨版本不重複）。</summary>
     public int NextSettingsId { get; set; } = 1;
 
+    /// <summary>完成新手引導（§20.9）的時間；舊資料匯入的使用者視為已完成。</summary>
+    public DateTime? OnboardedAt { get; set; }
+
+    /// <summary>已經看過的一次性提示（逗號分隔，例如 "surplus,overspend,reconcile"）。</summary>
+    public string? SeenTips { get; set; }
+
     // ---- 舊欄位（已不使用）：改存在設定版本裡，保留給舊資料匯入 ----
     public int MonthlyIncome { get; set; }
 
