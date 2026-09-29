@@ -47,8 +47,9 @@ function remove(i: number) {
 .subs {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 0 2px;
+  gap: 8px;
+  /* 跟卡片裡其他區塊一樣左右 16px */
+  padding: 10px 16px 14px;
 }
 .small {
   font-size: 12px;

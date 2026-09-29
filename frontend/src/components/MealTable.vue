@@ -264,7 +264,8 @@ const tweakChanges = computed(() => {
 }
 .st-row {
   display: grid;
-  grid-template-columns: 1fr 160px 120px 120px auto;
+  /* 最後一欄固定寬度：標題列那格是空的，用 auto 會讓標題和內容對不齊 */
+  grid-template-columns: minmax(0, 1fr) 210px 120px 120px 96px;
   gap: 8px;
   align-items: center;
 }
@@ -281,7 +282,9 @@ const tweakChanges = computed(() => {
   min-width: 0;
 }
 .st-time .input {
-  width: 92px;
+  /* 中文介面會顯示「上午 10:30」，太窄只看得到「上午」 */
+  width: 130px;
+  flex: none;
 }
 .until {
   font-size: 12px;
@@ -378,7 +381,8 @@ const tweakChanges = computed(() => {
   .st-row {
     grid-template-columns: 1fr 1fr;
     grid-template-areas:
-      'name time'
+      'name name'
+      'time time'
       'w h'
       '. del';
     padding-bottom: 8px;
@@ -392,6 +396,11 @@ const tweakChanges = computed(() => {
   }
   .st-time {
     grid-area: time;
+    flex-wrap: wrap;
+  }
+  .st-time .input {
+    flex: 1;
+    width: auto;
   }
   .st-w {
     grid-area: w;

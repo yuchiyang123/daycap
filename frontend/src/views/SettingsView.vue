@@ -770,6 +770,9 @@ async function signOut() {
   opacity: 0.45;
   cursor: default;
 }
+.corr {
+  white-space: nowrap;
+}
 .save-info {
   display: flex;
   flex-wrap: wrap;
@@ -847,6 +850,7 @@ async function signOut() {
   bottom: 12px;
   z-index: 5;
   display: flex;
+  flex-wrap: wrap; /* 超出額度的提示佔一整行，其他的換到下一行，不要被擠成直的 */
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
