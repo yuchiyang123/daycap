@@ -25,6 +25,19 @@ export interface SlotDto {
   start: string
   workdayAmount: number
   holidayAmount: number
+  /** §8.2 自動分配：時段權重、假日格權重（空 = 權重 × 假日倍率）、各格鎖定單價、各格底線 */
+  weight?: number | null
+  holidayWeight?: number | null
+  workdayLock?: number | null
+  holidayLock?: number | null
+  workdayFloor?: number | null
+  holidayFloor?: number | null
+}
+
+export interface MealAuto {
+  enabled: boolean
+  holidayMultiplier: number
+  roundingUnit: number
 }
 
 export interface FixedItemDto {
@@ -47,9 +60,56 @@ export interface CategoryDto {
   percent: number
   slots: SlotDto[]
   fixedItems: FixedItemDto[]
+  /** §7：沒勾「用 % 計算」= 固定金額 amount */
+  usePercent?: boolean
+  amount?: number | null
+  floor?: number | null
+  auto?: MealAuto | null
 }
 
 export type HolidayShift = 'None' | 'Before' | 'After'
+export type PercentBase = 'Income' | 'AfterFixed'
+export type IncomeKind = 'Fixed' | 'Variable'
+
+export interface CategoryEstimate {
+  index: number
+  budget: number
+  weekdayTotal: number
+  holidayTotal: number
+  scheduled: number
+  over: number
+}
+
+/** 設定頁即時合計（§7、§8.2），以新設定生效那一期計算 */
+export interface SettingsEstimate {
+  periodStart: string
+  periodEnd: string
+  weekdays: number
+  holidays: number
+  income: number
+  fixedTotal: number
+  percentBaseAmount: number
+  percentTotal: number
+  unallocated: number
+  categories: CategoryEstimate[]
+  errors: string[]
+}
+
+export interface AllocationCell {
+  key: string
+  days: number
+  weight: number
+  lockedUnitAmount: number | null
+  floor: number | null
+  tier: number
+}
+
+export interface AllocationResult {
+  unitAmount: Record<string, number>
+  leftover: number
+  errors: string[]
+  warnings: string[]
+}
 
 export interface SettingsDto {
   /** 邏輯日起點 HH:mm（§3.1） */
@@ -58,6 +118,8 @@ export interface SettingsDto {
   payday: { day: number; shift: HolidayShift }
   startDate: string | null
   categories: CategoryDto[]
+  percentBase: PercentBase
+  incomeKind: IncomeKind
 }
 
 export interface SettingsVersionSummary {
@@ -214,6 +276,8 @@ export interface PeriodView {
   fixedCharges: FixedChargeView[]
   transfers: PoolTransferView[]
   reconciliations: ReconciliationView[]
+  /** 給使用者看的提醒（例如自動分配沒執行） */
+  warnings: string[]
 }
 
 export interface ReconciliationView {

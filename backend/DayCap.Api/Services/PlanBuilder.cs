@@ -24,40 +24,43 @@ public sealed class PeriodPlan
     public List<TodayLowering> Lowerings { get; init; } = [];
     public int WeekdayCount { get; init; }
     public int HolidayCount { get; init; }
+
+    /// <summary>每日類「額度 − 排程」差額那一行的說明（自動分配時是分配器零頭，§8.2「零頭來源」）。</summary>
+    public Dictionary<int, string> GapLabels { get; init; } = [];
+
+    /// <summary>給使用者看的提醒，例如「分配器尚未實作，先用手動金額」。</summary>
+    public List<string> Warnings { get; init; } = [];
 }
 
 /// <summary>
 /// 由設定版本算出一期的計畫：
 /// - 收入、各分類整期額度、固定支出：用期間第一天有效的版本（期中改了下期才生效）。
 /// - 每個時段每一天的金額：用那一天有效的版本；和「第一天的版本一路用到底」的差額另外列成 VersionLines。
+/// - 每日類開了自動分配（§8.2）：每段版本用「整期額度 − 前面已經排掉的」對剩下的平日 / 假日天數重算單價。
 /// </summary>
 public static class PlanBuilder
 {
-    public static PeriodPlan Build(DateOnly start, DateOnly end, SettingsTimeline timeline, IReadOnlyDictionary<DateOnly, DayInfo> days)
+    public static PeriodPlan Build(DateOnly start, DateOnly end, SettingsTimeline timeline, IReadOnlyDictionary<DateOnly, DayInfo> days,
+        decimal? previousActualIncome = null)
     {
         var startDoc = timeline.For(start).Doc;
         bool IsHoliday(DateOnly d) => days.TryGetValue(d, out var i) ? i.IsHoliday : d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+        var warnings = new List<string>();
 
-        // ---- 分類與整期額度（第一天的版本）----
-        var categories = new List<PeriodCategory>();
-        var fixedCharges = new List<PeriodFixedCharge>();
-        for (var i = 0; i < startDoc.Categories.Count; i++)
+        // ---- 收入、分類與整期額度（第一天的版本）----
+        var income = startDoc.Kind == IncomeKind.Variable && previousActualIncome is { } prev ? prev : startDoc.MonthlyIncome;
+        if (startDoc.Kind == IncomeKind.Variable)
         {
-            var c = startDoc.Categories[i];
-            var charges = c.Mode == BudgetMode.Fixed ? FixedChargesFor(c, start, end).ToList() : [];
-            fixedCharges.AddRange(charges);
-            categories.Add(new PeriodCategory
-            {
-                CategoryId = c.Id,
-                Name = c.Name,
-                Group = c.Group,
-                Mode = c.Mode,
-                SortOrder = i,
-                Budget = c.Mode == BudgetMode.Fixed
-                    ? charges.Sum(f => f.Amount)
-                    : Math.Round(startDoc.MonthlyIncome * c.Percent / 100m, 0, MidpointRounding.AwayFromZero),
-            });
+            warnings.Add(previousActualIncome is null
+                ? "非固定收入：還沒有上期實際收入，先用設定的月收入。"
+                : "非固定收入：這期以上期實際收入當基準。");
         }
+        var fixedCharges = BudgetMath.FixedCharges(startDoc, start, end);
+        var budgets = BudgetMath.CategoryBudgets(startDoc, fixedCharges, income);
+        var categories = startDoc.Categories.Select((c, i) => new PeriodCategory
+        {
+            CategoryId = c.Id, Name = c.Name, Group = c.Group, Mode = c.Mode, SortOrder = i, Budget = budgets[c.Id],
+        }).ToList();
 
         // 期中才新增的分類：這期沒有額度（0），它的排程從待定區出
         var laterIndex = categories.Count;
@@ -69,14 +72,30 @@ public static class PlanBuilder
             }
         }
 
+        var allDays = Enumerable.Range(0, end.DayNumber - start.DayNumber + 1).Select(i => start.AddDays(i)).ToList();
+        int Weekdays(DateOnly from) => allDays.Count(d => d >= from && !IsHoliday(d));
+        int Holidays(DateOnly from) => allDays.Count(d => d >= from && IsHoliday(d));
+
+        // ---- 第一天的版本一路用到底（基準），自動分配用整期天數 ----
+        var gapLabels = new Dictionary<int, string>();
+        var baselineUnits = new Dictionary<int, Dictionary<string, decimal>?>();
+        foreach (var c in startDoc.Categories.Where(c => c.Mode == BudgetMode.Daily))
+        {
+            var (units, _, problem) = BudgetMath.AutoUnits(c, budgets[c.Id], Weekdays(start), Holidays(start));
+            baselineUnits[c.Id] = units;
+            if (units is not null) gapLabels[c.Id] = $"{c.Name}自動分配的零頭";
+            if (problem is not null) warnings.Add($"「{c.Name}」自動分配沒有執行：{problem}，先用手動金額。");
+        }
+
+        decimal Amount(CategoryDoc c, SlotDoc s, bool holiday, Dictionary<string, decimal>? units) =>
+            units is not null && units.TryGetValue($"{s.Id}:{(holiday ? 'h' : 'w')}", out var u) ? u : holiday ? s.HolidayAmount : s.WorkdayAmount;
+
         // ---- 每天每個時段 ----
         var allocations = new List<DayAllocation>();
-        var weekdays = 0;
-        var holidays = 0;
-        for (var d = start; d <= end; d = d.AddDays(1))
+        var segmentUnits = new Dictionary<(int VersionId, int CategoryId), Dictionary<string, decimal>?>();
+        foreach (var d in allDays)
         {
             var holiday = IsHoliday(d);
-            if (holiday) holidays++; else weekdays++;
             var (version, doc) = timeline.For(d);
 
             var slots = new Dictionary<int, (CategoryDoc Cat, SlotDoc Slot, int Order)>();
@@ -94,9 +113,37 @@ public static class PlanBuilder
 
             foreach (var (slotId, (cat, slot, order)) in slots)
             {
-                var planned = AmountOf(doc, slotId, holiday);
-                var baseline = AmountOf(startDoc, slotId, holiday);
+                var docCat = doc.Categories.FirstOrDefault(c => c.Id == cat.Id && c.Mode == BudgetMode.Daily);
+                var docSlot = docCat?.Slots.FirstOrDefault(s => s.Id == slotId);
+                var startCat = startDoc.Categories.FirstOrDefault(c => c.Id == cat.Id && c.Mode == BudgetMode.Daily);
+                var startSlot = startCat?.Slots.FirstOrDefault(s => s.Id == slotId);
+
+                decimal planned = 0;
+                if (docCat is not null && docSlot is not null)
+                {
+                    Dictionary<string, decimal>? units = null;
+                    if (docCat.Auto is { Enabled: true } && budgets.ContainsKey(docCat.Id))
+                    {
+                        if (version.EffectiveFrom <= start || ReferenceEquals(doc, startDoc))
+                        {
+                            units = baselineUnits.GetValueOrDefault(docCat.Id);
+                        }
+                        else if (!segmentUnits.TryGetValue((version.Id, docCat.Id), out units))
+                        {
+                            // 期中改自動分配設定（§4.1）：整期額度 − 這段之前已經排掉的，對剩下的天數重算
+                            var used = allocations.Where(a => a.CategoryId == docCat.Id && a.Date < d).Sum(a => a.Planned);
+                            (units, _, var problem) = BudgetMath.AutoUnits(docCat, budgets[docCat.Id] - used, Weekdays(d), Holidays(d));
+                            if (problem is not null) warnings.Add($"「{docCat.Name}」{d:M/d} 起的自動分配沒有執行：{problem}，先用手動金額。");
+                            segmentUnits[(version.Id, docCat.Id)] = units;
+                        }
+                    }
+                    planned = Amount(docCat, docSlot, holiday, units);
+                }
+                var baseline = startCat is not null && startSlot is not null
+                    ? Amount(startCat, startSlot, holiday, baselineUnits.GetValueOrDefault(startCat.Id))
+                    : 0;
                 if (planned <= 0 && baseline <= 0) continue;
+
                 allocations.Add(new DayAllocation
                 {
                     Date = d,
@@ -130,7 +177,7 @@ public static class PlanBuilder
         // ---- 今天改設定、今天還沒回報的時段取較低值 ----
         var byKey = allocations.ToDictionary(a => (a.Date, a.SlotId));
         var lowerings = new List<TodayLowering>();
-        for (var d = start; d <= end; d = d.AddDays(1))
+        foreach (var d in allDays)
         {
             foreach (var (version, doc) in timeline.CreatedOnButLater(d))
             {
@@ -139,7 +186,7 @@ public static class PlanBuilder
                     foreach (var s in c.Slots)
                     {
                         if (!byKey.TryGetValue((d, s.Id), out var a)) continue;
-                        var lower = byKey[(d, s.Id)].IsHoliday ? s.HolidayAmount : s.WorkdayAmount;
+                        var lower = a.IsHoliday ? s.HolidayAmount : s.WorkdayAmount;
                         if (lower < a.Planned) lowerings.Add(new TodayLowering(d, c.Id, s.Id, s.Name, lower, version.CreatedAt));
                     }
                 }
@@ -148,71 +195,17 @@ public static class PlanBuilder
 
         return new PeriodPlan
         {
-            Income = startDoc.MonthlyIncome,
+            Income = income,
             LogicalDayStart = startDoc.LogicalDayStart,
             Categories = categories,
             Allocations = allocations,
             FixedCharges = fixedCharges,
             VersionLines = versionLines,
             Lowerings = lowerings,
-            WeekdayCount = weekdays,
-            HolidayCount = holidays,
+            WeekdayCount = allDays.Count(d => !IsHoliday(d)),
+            HolidayCount = allDays.Count(IsHoliday),
+            GapLabels = gapLabels,
+            Warnings = warnings.Distinct().ToList(),
         };
-    }
-
-    private static decimal AmountOf(SettingsDocument doc, int slotId, bool holiday)
-    {
-        foreach (var c in doc.Categories)
-        {
-            if (c.Mode != BudgetMode.Daily) continue;
-            foreach (var s in c.Slots)
-            {
-                if (s.Id == slotId) return holiday ? s.HolidayAmount : s.WorkdayAmount;
-            }
-        }
-        return 0;
-    }
-
-    private static IEnumerable<PeriodFixedCharge> FixedChargesFor(CategoryDoc c, DateOnly start, DateOnly end)
-    {
-        foreach (var item in c.FixedItems.Where(f => f.IsActive && (f.ActiveFrom is null || f.ActiveFrom <= start)))
-        {
-            DateOnly? due;
-            if (item.Cycle != BillingCycle.Monthly)
-            {
-                var first = item.BillingMonth ?? 1;
-                int[] months = item.Cycle == BillingCycle.Quarterly
-                    ? [first, (first + 2) % 12 + 1, (first + 5) % 12 + 1, (first + 8) % 12 + 1]
-                    : [first];
-                due = FindDueDate(start, end, item.DueDay ?? 1, months);
-                if (due is null) continue; // 這期不是年繳 / 季繳的月份
-            }
-            else
-            {
-                due = item.DueDay is { } dd ? FindDueDate(start, end, dd, null) : null;
-            }
-
-            yield return new PeriodFixedCharge
-            {
-                CategoryId = c.Id,
-                FixedItemId = item.Id,
-                Name = item.Name,
-                Amount = item.Amount,
-                DueDate = due,
-                IsSubscription = item.IsSubscription,
-            };
-        }
-    }
-
-    /// <summary>在週期內找扣款日；日期超過當月天數時落在月底（例如 31 號在二月 = 28/29 號）。</summary>
-    private static DateOnly? FindDueDate(DateOnly start, DateOnly end, int dueDay, int[]? months)
-    {
-        for (var d = start; d <= end; d = d.AddDays(1))
-        {
-            if (months is not null && !months.Contains(d.Month)) continue;
-            var target = Math.Min(dueDay, DateTime.DaysInMonth(d.Year, d.Month));
-            if (d.Day == target) return d;
-        }
-        return null;
     }
 }

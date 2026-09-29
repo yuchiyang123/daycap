@@ -560,3 +560,12 @@ input.input::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* 重播產生的提醒（例如自動分配沒執行、非固定收入的基準） */
+.notice-line {
+  font-size: 13px;
+  color: var(--ink-2);
+  border-left: 3px solid var(--warn-text);
+  background: var(--surface);
+  padding: 8px 12px;
+}

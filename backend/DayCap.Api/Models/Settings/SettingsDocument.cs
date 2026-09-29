@@ -14,8 +14,18 @@ public record SettingsDocument(
     string LogicalDayStart,
     decimal MonthlyIncome,
     PaydayRule Payday,
-    List<CategoryDoc> Categories)
+    List<CategoryDoc> Categories,
+    // % 算在哪個基準上（§7）；null = 舊設定，當成「佔收入」
+    PercentBase? PercentBase = null,
+    // 固定收入 / 非固定收入（非固定用上期實際收入當 % 基準）；null = 固定
+    IncomeKind? IncomeKind = null)
 {
+    [JsonIgnore]
+    public PercentBase Base => PercentBase ?? global::DayCap.Api.Models.Settings.PercentBase.Income;
+
+    [JsonIgnore]
+    public IncomeKind Kind => IncomeKind ?? global::DayCap.Api.Models.Settings.IncomeKind.Fixed;
+
     [JsonIgnore]
     public TimeSpan DayStart => ParseTime(LogicalDayStart);
 
@@ -24,6 +34,17 @@ public record SettingsDocument(
 }
 
 public enum HolidayShift { None, Before, After }
+
+/// <summary>§7：Income = 佔月收入；AfterFixed = 佔「月收入扣掉固定支出後的餘額」（規格預設）。</summary>
+public enum PercentBase { Income, AfterFixed }
+
+public enum IncomeKind { Fixed, Variable }
+
+/// <summary>
+/// §8.2 自動分配模式的參數（每日類分類）。每個時段在平日、假日各是一格，
+/// 權重＝時段權重 ×（假日時再乘 HolidayMultiplier），由分配器 Allocator.Allocate 算出單價。
+/// </summary>
+public record MealAuto(bool Enabled, decimal HolidayMultiplier, decimal RoundingUnit);
 
 /// <summary>發薪日：每月 Day 號；遇到假日（行事曆上不是工作日）時依 Shift 調整（§3.4）。</summary>
 public record PaydayRule(int Day, HolidayShift Shift);
@@ -35,13 +56,37 @@ public record CategoryDoc(
     BudgetMode Mode,
     decimal Percent,
     List<SlotDoc> Slots,
-    List<FixedItemDoc> FixedItems);
+    List<FixedItemDoc> FixedItems,
+    // 「用 % 計算」沒勾 = 固定金額 Amount（§7）；null = 用 %
+    bool? UsePercent = null,
+    decimal? Amount = null,
+    // 區塊底線（§7、§8.1，範本套用時給分配器用）
+    decimal? Floor = null,
+    // 每日類的自動分配（§8.2）；null 或 Enabled=false = 自己設定
+    MealAuto? Auto = null)
+{
+    [JsonIgnore]
+    public bool IsPercent => UsePercent ?? true;
+}
 
 /// <summary>
 /// 時段。只存開始時間，結束＝同分類下一個時段的開始；最後一個時段到隔天邏輯日起點（§3.2 邊界銜接）。
 /// 同一分類的第一個時段必須從邏輯日起點開始，這樣 24 小時一定被切滿、不會有空隙或重疊。
 /// </summary>
-public record SlotDoc(int Id, string Name, string Start, decimal WorkdayAmount, decimal HolidayAmount);
+public record SlotDoc(
+    int Id,
+    string Name,
+    string Start,
+    decimal WorkdayAmount,
+    decimal HolidayAmount,
+    // §8.2 自動分配：時段權重、各格鎖定單價、各格底線（都可空）
+    decimal? Weight = null,
+    decimal? WorkdayLock = null,
+    decimal? HolidayLock = null,
+    decimal? WorkdayFloor = null,
+    decimal? HolidayFloor = null,
+    // 假日這格自己的權重；null = Weight × 假日倍率。從「自己設定」切到自動時用來讓數字不跳（§8.2）
+    decimal? HolidayWeight = null);
 
 public record FixedItemDoc(
     int Id,

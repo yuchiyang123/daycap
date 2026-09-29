@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
+import MealTable from '../components/MealTable.vue'
+import { watch } from 'vue'
+import { estimateSettings } from '../api/endpoints'
+import type { PercentBase, SettingsEstimate } from '../api/types'
 import { deleteBeforeStart, getCalendar, getSettings, saveSettings, setDayOverride, logout } from '../api/endpoints'
 import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, HolidayShift, SettingsDto, SettingsVersionSummary } from '../api/types'
 import { store, loadCurrentPeriod } from '../lib/store'
@@ -52,7 +56,47 @@ function fixedMonthly(c: CategoryDto): number {
   const perMonth = { Monthly: 1, Quarterly: 3, Yearly: 12 } as const
   return c.fixedItems.filter((f) => f.isActive).reduce((a, f) => a + Math.round((Number(f.amount) || 0) / perMonth[f.cycle]), 0)
 }
+// ---- 即時合計（§7、§8.2）：用草稿向後端試算新設定生效那一期 ----
+const estimate = ref<SettingsEstimate | null>(null)
+let estTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  draft,
+  (d) => {
+    clearTimeout(estTimer)
+    if (!d) return
+    estTimer = setTimeout(async () => {
+      try {
+        estimate.value = await estimateSettings(cleanDraft())
+      } catch {
+        /* 試算失敗不影響編輯 */
+      }
+    }, 350)
+  },
+  { deep: true },
+)
+const estOf = (i: number) => estimate.value?.categories.find((c) => c.index === i)
+const overCats = computed(() => (estimate.value?.categories ?? []).filter((c) => c.over > 0))
+
+/** % 基準切換：換算每個分類的 %，讓金額不變（§7） */
+function switchBase(next: PercentBase) {
+  const d = draft.value!
+  if (d.percentBase === next || !estimate.value) {
+    d.percentBase = next
+    touch()
+    return
+  }
+  const incomeAmt = Number(d.monthlyIncome) || 0
+  const afterFixed = Math.max(1, incomeAmt - estimate.value.fixedTotal)
+  const factor = next === 'AfterFixed' ? incomeAmt / afterFixed : afterFixed / Math.max(1, incomeAmt)
+  for (const c of d.categories) if (c.mode !== 'Fixed' && c.usePercent !== false) c.percent = Math.round((Number(c.percent) || 0) * factor * 100) / 100
+  d.percentBase = next
+  touch()
+}
+
 function amountOf(c: CategoryDto): number {
+  const i = draft.value?.categories.indexOf(c) ?? -1
+  const e = i >= 0 ? estOf(i) : undefined
+  if (e) return e.budget
   return c.mode === 'Fixed' ? fixedMonthly(c) : Math.round((income.value * (Number(c.percent) || 0)) / 100)
 }
 const allocated = computed(() => draft.value?.categories.reduce((a, c) => a + amountOf(c), 0) ?? 0)
@@ -113,12 +157,6 @@ const nextDay = computed(() => {
   d.setDate(d.getDate() + 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 })
-function dailyEstimate(c: CategoryDto): number {
-  const w = c.slots.reduce((a, s) => a + (Number(s.workdayAmount) || 0), 0)
-  const h = c.slots.reduce((a, s) => a + (Number(s.holidayAmount) || 0), 0)
-  return w * dayCounts.value.work + h * dayCounts.value.hol
-}
-
 // ---- 分類操作 ----
 const groups: CategoryGroup[] = ['Food', 'Clothing', 'Housing', 'Transport', 'Education', 'Leisure', 'Savings', 'Other']
 const modes: { v: BudgetMode; label: string }[] = [
@@ -155,31 +193,50 @@ function setMode(c: CategoryDto, m: BudgetMode) {
 }
 
 // ---- 時段時間（§3.2 邊界銜接）：第一個固定從邏輯日起點開始 ----
-const toMin = (t: string) => {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + m
-}
-const fromMin = (x: number) => {
-  const v = ((x % 1440) + 1440) % 1440
-  return `${String(Math.floor(v / 60)).padStart(2, '0')}:${String(v % 60).padStart(2, '0')}`
-}
-/** 新時段預設接在最後一個後面 3 小時 */
-function addSlot(c: CategoryDto) {
-  const last = c.slots[c.slots.length - 1]
-  const start = last ? fromMin(toMin(last.start) + 180) : draft.value!.logicalDayStart
-  c.slots.push({ id: 0, name: '', start, workdayAmount: 0, holidayAmount: 0 })
-  touch()
-}
-/** 某個時段的結束時間＝下一個的開始；最後一個到隔天邏輯日起點 */
-function slotEnd(c: CategoryDto, i: number): string {
-  return c.slots[i + 1]?.start ?? draft.value!.logicalDayStart
-}
 /** 改邏輯日起點時，每個分類的第一個時段跟著移 */
 function onDayStartChange() {
   for (const c of draft.value!.categories) if (c.slots[0]) c.slots[0].start = draft.value!.logicalDayStart
   touch()
 }
 const shiftLabel: Record<HolidayShift, string> = { None: '不調整', Before: '往前推到最近的工作日', After: '往後推到最近的工作日' }
+
+/** 送出前整理數字（儲存和即時試算共用） */
+function cleanDraft(): SettingsDto {
+  const d = draft.value!
+  const num = (x: unknown) => (x === null || x === '' || x === undefined ? null : Number(x))
+  return {
+    logicalDayStart: d.logicalDayStart,
+    monthlyIncome: Math.round(Number(d.monthlyIncome) || 0),
+    payday: { day: Math.round(Number(d.payday.day) || 1), shift: d.payday.shift },
+    startDate: d.startDate || null,
+    percentBase: d.percentBase,
+    incomeKind: d.incomeKind,
+    categories: d.categories.map((c) => ({
+      ...c,
+      percent: Number(c.percent) || 0,
+      usePercent: c.usePercent !== false,
+      amount: c.usePercent === false ? Math.round(Number(c.amount) || 0) : null,
+      floor: num(c.floor),
+      slots: c.slots.map((s) => ({
+        ...s,
+        workdayAmount: Math.round(Number(s.workdayAmount) || 0),
+        holidayAmount: Math.round(Number(s.holidayAmount) || 0),
+        weight: num(s.weight),
+        holidayWeight: num(s.holidayWeight),
+        workdayLock: num(s.workdayLock),
+        holidayLock: num(s.holidayLock),
+        workdayFloor: num(s.workdayFloor),
+        holidayFloor: num(s.holidayFloor),
+      })),
+      fixedItems: c.fixedItems.map((f) => ({
+        ...f,
+        amount: Math.round(Number(f.amount) || 0),
+        dueDay: f.dueDay === null || (f.dueDay as unknown) === '' ? null : Math.round(Number(f.dueDay)),
+        billingMonth: f.cycle === 'Monthly' ? null : Math.round(Number(f.billingMonth) || 1),
+      })),
+    })),
+  }
+}
 
 async function save() {
   if (!draft.value) return
@@ -191,24 +248,7 @@ async function save() {
   error.value = null
   try {
     const startChanged = (draft.value.startDate || null) !== (savedStart.value || null)
-    const clean: SettingsDto = {
-      logicalDayStart: draft.value.logicalDayStart,
-      monthlyIncome: Math.round(Number(draft.value.monthlyIncome) || 0),
-      payday: { day: Math.round(Number(draft.value.payday.day) || 1), shift: draft.value.payday.shift },
-      startDate: draft.value.startDate || null,
-      categories: draft.value.categories.map((c) => ({
-        ...c,
-        percent: Number(c.percent) || 0,
-        slots: c.slots.map((s) => ({ ...s, workdayAmount: Math.round(Number(s.workdayAmount) || 0), holidayAmount: Math.round(Number(s.holidayAmount) || 0) })),
-        fixedItems: c.fixedItems.map((f) => ({
-          ...f,
-          amount: Math.round(Number(f.amount) || 0),
-          dueDay: f.dueDay === null || (f.dueDay as unknown) === '' ? null : Math.round(Number(f.dueDay)),
-          billingMonth: f.cycle === 'Monthly' ? null : Math.round(Number(f.billingMonth) || 1),
-        })),
-      })),
-    }
-    const v = await saveSettings(clean, correcting.value ? correctionFrom.value : null, correcting.value ? correctionNote.value.trim() : null)
+    const v = await saveSettings(cleanDraft(), correcting.value ? correctionFrom.value : null, correcting.value ? correctionNote.value.trim() : null)
     applyView(v)
     dirty.value = false
     savedMsg.value = correcting.value
@@ -311,6 +351,20 @@ async function signOut() {
             <input v-model.number="draft.monthlyIncome" class="input num" inputmode="numeric" @input="touch" />
           </label>
           <label class="field">
+            收入類型
+            <select v-model="draft.incomeKind" class="select" @change="touch">
+              <option value="Fixed">固定月薪</option>
+              <option value="Variable">非固定（接案、抽成）</option>
+            </select>
+          </label>
+          <label class="field">
+            % 算在哪個基準上
+            <select :value="draft.percentBase" class="select" @change="switchBase(($event.target as HTMLSelectElement).value as PercentBase)">
+              <option value="AfterFixed">月收入扣掉固定支出後（建議）</option>
+              <option value="Income">整個月收入</option>
+            </select>
+          </label>
+          <label class="field">
             發薪日
             <select v-model.number="draft.payday.day" class="select" @change="touch">
               <option v-for="d in 31" :key="d" :value="d">每月 {{ d }} 號{{ d > 28 ? '（小月是月底）' : '' }}</option>
@@ -334,6 +388,12 @@ async function signOut() {
             </div>
           </div>
           <p class="hint-line muted">
+            <template v-if="draft.incomeKind === 'Variable'">非固定收入：每期的 % 以上期實際收入（含薪資調整）當基準。</template>
+            <template v-if="estimate && draft.percentBase === 'AfterFixed'">
+              這期固定支出 {{ money(estimate.fixedTotal) }}，% 算在剩下的 {{ money(estimate.percentBaseAmount) }} 上；切換基準時會自動換算 %，金額不變。
+            </template>
+          </p>
+          <p class="hint-line muted">
             一天從 {{ draft.logicalDayStart }} 開始：凌晨 {{ draft.logicalDayStart }} 以前的消費算前一天（週六 01:00 的宵夜算週五）。
           </p>
           <p class="hint-line muted">
@@ -354,8 +414,9 @@ async function signOut() {
       <section class="section">
         <h2 class="section-title">
           分配
-          <span class="aside num" :class="unallocated < 0 ? 'bad' : ''">
-            已分配 {{ money(allocated) }}（{{ pct(allocated / Math.max(1, income)) }}）・{{ unallocated >= 0 ? `未分配 ${money(unallocated)}` : `超出收入 ${money(-unallocated)}` }}
+          <span class="aside num" :class="unallocated < 0 || (estimate?.percentTotal ?? 0) > 100 ? 'bad' : ''">
+            <template v-if="estimate">已分配 {{ estimate.percentTotal }}%，剩 {{ Math.max(0, 100 - estimate.percentTotal).toFixed(2).replace(/\.?0+$/, '') }}% 進待分配池・</template>
+            {{ unallocated >= 0 ? `未分配 ${money(unallocated)}` : `超出收入 ${money(-unallocated)}` }}
           </span>
         </h2>
         <div class="panel panel-pad">
@@ -395,45 +456,36 @@ async function signOut() {
           </div>
 
           <div v-if="c.mode !== 'Fixed'" class="pct-row">
-            <label class="field pct-field">
-              佔收入 %
+            <label class="check pct-toggle">
+              <input :checked="c.usePercent !== false" type="checkbox" @change="c.usePercent = ($event.target as HTMLInputElement).checked; touch()" />
+              <span>用 % 計算</span>
+            </label>
+            <label v-if="c.usePercent !== false" class="field pct-field">
+              {{ draft.percentBase === 'AfterFixed' ? '佔扣掉固定支出後 %' : '佔收入 %' }}
               <input v-model.number="c.percent" class="input compact num" inputmode="decimal" @input="touch" />
             </label>
-            <span class="num eq">= {{ money(amountOf(c)) }} / 月</span>
-            <span v-if="c.mode === 'Daily'" class="num muted est">
-              {{ periodWord }}日程 {{ money(dailyEstimate(c)) }}（上班 {{ dayCounts.work }} 天・假日 {{ dayCounts.hol }} 天）
-              <b :class="amountOf(c) - dailyEstimate(c) < 0 ? 'bad' : ''">
-                {{ amountOf(c) - dailyEstimate(c) >= 0 ? `多 ${money(amountOf(c) - dailyEstimate(c))} 進待定區` : `排超過 ${money(dailyEstimate(c) - amountOf(c))}` }}
-              </b>
-            </span>
-            <span v-else class="muted est">整月一個額度，花了就扣</span>
+            <label v-else class="field pct-field">
+              固定金額
+              <input v-model.number="c.amount" class="input compact num" inputmode="numeric" @input="touch" />
+            </label>
+            <span class="num eq">= {{ money(amountOf(c)) }} / 期</span>
+            <label class="field floor-field">
+              底線（選填）
+              <input v-model.number="c.floor" class="input compact num" inputmode="numeric" placeholder="無" @input="touch" />
+            </label>
+            <span v-if="c.mode === 'Envelope'" class="muted est">整期一個額度，花了就扣</span>
           </div>
 
           <!-- 每日時段 -->
           <div v-if="c.mode === 'Daily'" class="sub-table">
-            <div class="st-row st-head muted">
-              <span>時段</span><span>時間</span><span class="r">上班日</span><span class="r">假日</span><span />
-            </div>
-            <div v-for="(s, si) in c.slots" :key="si" class="st-row">
-              <input v-model="s.name" class="input compact st-name" placeholder="例如 早餐" maxlength="40" aria-label="時段名稱" @input="touch" />
-              <span class="st-time">
-                <input
-                  v-model="s.start"
-                  type="time"
-                  class="input compact"
-                  step="1800"
-                  :disabled="si === 0"
-                  :aria-label="`${s.name || '時段'}開始時間`"
-                  @change="touch"
-                />
-                <span class="muted until num">到 {{ slotEnd(c, si) }}</span>
-              </span>
-              <input v-model.number="s.workdayAmount" class="input compact num st-w" inputmode="numeric" placeholder="上班日" aria-label="上班日金額" @input="touch" />
-              <input v-model.number="s.holidayAmount" class="input compact num st-h" inputmode="numeric" placeholder="假日" aria-label="假日金額" @input="touch" />
-              <button type="button" class="btn quiet sm danger st-del" :disabled="c.slots.length === 1" @click="c.slots.splice(si, 1); touch()">移除</button>
-            </div>
-            <p class="muted small">第一個時段固定從 {{ draft.logicalDayStart }} 開始，每個時段到下一個開始為止，24 小時剛好切滿。</p>
-            <button type="button" class="btn sm add" @click="addSlot(c)">新增時段</button>
+            <MealTable
+              :cat="c"
+              :est="estOf(i)"
+              :weekdays="estimate?.weekdays ?? dayCounts.work"
+              :holidays="estimate?.holidays ?? dayCounts.hol"
+              :day-start="draft.logicalDayStart"
+              @touch="touch"
+            />
           </div>
 
           <!-- 固定項目 -->
@@ -496,7 +548,10 @@ async function signOut() {
             <input v-model="correctionNote" class="input compact" maxlength="200" placeholder="原因（必填），例如 薪資單記錯" aria-label="更正原因" />
           </div>
         </div>
-        <button class="btn primary" :disabled="saving || !dirty" @click="save">{{ saving ? '儲存中' : correcting ? '存成更正' : '儲存設定' }}</button>
+        <p v-if="overCats.length" class="bad small over-msg">
+          {{ overCats.map((c) => `「${draft!.categories[c.index]?.name}」超出 ${money(c.over)}`).join('、') }}，調整後才能儲存（§8.2）
+        </p>
+        <button class="btn primary" :disabled="saving || !dirty || overCats.length > 0" @click="save">{{ saving ? '儲存中' : correcting ? '存成更正' : '儲存設定' }}</button>
       </div>
 
       <section class="section">
@@ -671,6 +726,17 @@ async function signOut() {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.pct-toggle {
+  align-self: center;
+  padding-bottom: 6px;
+}
+.floor-field {
+  width: 110px;
+}
+.over-msg {
+  width: 100%;
+  order: -1;
 }
 .st-time {
   display: flex;

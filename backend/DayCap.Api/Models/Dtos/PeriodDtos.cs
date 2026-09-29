@@ -26,7 +26,9 @@ public record PeriodView(
     List<EntryView> Entries,
     List<FixedChargeView> FixedCharges,
     List<PoolTransferView> Transfers,
-    List<ReconciliationView> Reconciliations);
+    List<ReconciliationView> Reconciliations,
+    // 給使用者看的提醒（例如自動分配沒執行）
+    List<string> Warnings);
 
 /// <summary>對帳結果：Diff = 實際 − 預期；負的依超支規則處理（FromPool / Spread / Unabsorbed）。</summary>
 public record ReconciliationView(int Id, DateOnly Date, decimal Expected, decimal Actual, decimal Diff, decimal FromPool, decimal Spread, decimal Unabsorbed);

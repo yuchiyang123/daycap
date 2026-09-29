@@ -25,7 +25,7 @@ public sealed class LedgerAndSettlementTests : IDisposable
         _conn.Open();
         _db = new DayCapDbContext(new DbContextOptionsBuilder<DayCapDbContext>().UseSqlite(_conn).Options);
         _db.Database.Migrate();
-        _settings = new SettingsService(_db, _clock);
+        _settings = new SettingsService(_db, _clock, new WeekendCalendar());
         _periods = new PeriodService(_db, _settings, new WeekendCalendar(), _clock);
         _entries = new EntryService(_db, _periods, _settings, _clock);
         _assets = new AssetService(_db, new NoQuotes(), new AccountService(_db, _periods, _settings, _clock), _clock);

@@ -20,6 +20,9 @@ import type {
   PeriodView,
   SettingsDto,
   SettingsView,
+  SettingsEstimate,
+  AllocationCell,
+  AllocationResult,
 } from './types'
 
 export const getMe = () => api<Me>('/api/me', { allowAnonymous: true })
@@ -110,3 +113,9 @@ export const previewReconciliation = (body: ReconcileBody) =>
 export const createReconciliation = (body: ReconcileBody) =>
   api<ReconciliationResult>('/api/accounts/reconciliations', { method: 'POST', body })
 export const deleteReconciliation = (id: number) => api<void>(`/api/accounts/reconciliations/${id}`, { method: 'DELETE' })
+
+// ---- 設定即時合計、分配器預覽（§7、§8.2）----
+export const estimateSettings = (draft: SettingsDto) => api<SettingsEstimate>('/api/settings/estimate', { method: 'POST', body: draft })
+/** 分配器由你實作（§8.1）；還沒實作時後端回 501，這裡會丟出含「分配器尚未實作」訊息的錯誤 */
+export const allocatePreview = (budget: number, cells: AllocationCell[], roundingUnit: number, releasedShareReceiverKey: string | null = null) =>
+  api<AllocationResult>('/api/settings/allocate-preview', { method: 'POST', body: { budget, cells, roundingUnit, releasedShareReceiverKey } })

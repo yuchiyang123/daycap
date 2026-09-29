@@ -28,7 +28,7 @@ public sealed class AccountTests : IDisposable
         _conn.Open();
         _db = new DayCapDbContext(new DbContextOptionsBuilder<DayCapDbContext>().UseSqlite(_conn).Options);
         _db.Database.Migrate();
-        _settings = new SettingsService(_db, _clock);
+        _settings = new SettingsService(_db, _clock, new WeekendOnlyCalendar());
         _periods = new PeriodService(_db, _settings, new WeekendOnlyCalendar(), _clock);
         _entries = new EntryService(_db, _periods, _settings, _clock);
         _accounts = new AccountService(_db, _periods, _settings, _clock);

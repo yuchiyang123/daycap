@@ -44,6 +44,8 @@ async function confirmNoChange() {
       </div>
     </header>
 
+    <p v-for="w in period.warnings" :key="w" class="notice-line">{{ w }}</p>
+
     <section class="panel hero-box">
       <div class="hero-main">
         <span class="label">今日額度</span>

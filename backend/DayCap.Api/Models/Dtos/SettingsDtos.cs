@@ -8,7 +8,9 @@ public record SettingsDto(
     decimal MonthlyIncome,
     PaydayRule Payday,
     DateOnly? StartDate,
-    List<CategoryDto> Categories);
+    List<CategoryDto> Categories,
+    PercentBase PercentBase = PercentBase.Income,
+    IncomeKind IncomeKind = IncomeKind.Fixed);
 
 public record CategoryDto(
     int Id,
@@ -17,9 +19,43 @@ public record CategoryDto(
     BudgetMode Mode,
     decimal Percent,
     List<SlotDto> Slots,
-    List<FixedItemDto> FixedItems);
+    List<FixedItemDto> FixedItems,
+    bool UsePercent = true,
+    decimal? Amount = null,
+    decimal? Floor = null,
+    MealAuto? Auto = null);
 
-public record SlotDto(int Id, string Name, string Start, decimal WorkdayAmount, decimal HolidayAmount);
+public record SlotDto(
+    int Id,
+    string Name,
+    string Start,
+    decimal WorkdayAmount,
+    decimal HolidayAmount,
+    decimal? Weight = null,
+    decimal? WorkdayLock = null,
+    decimal? HolidayLock = null,
+    decimal? WorkdayFloor = null,
+    decimal? HolidayFloor = null,
+    decimal? HolidayWeight = null);
+
+/// <summary>設定頁即時合計（§7、§8.2）：用草稿算出下一期（新設定生效那期）的額度與排程。</summary>
+public record SettingsEstimate(
+    DateOnly PeriodStart,
+    DateOnly PeriodEnd,
+    int Weekdays,
+    int Holidays,
+    decimal Income,
+    decimal FixedTotal,
+    decimal PercentBaseAmount,
+    decimal PercentTotal,
+    decimal Unallocated,
+    List<CategoryEstimate> Categories,
+    List<string> Errors);
+
+public record CategoryEstimate(int Index, decimal Budget, decimal WeekdayTotal, decimal HolidayTotal, decimal Scheduled, decimal Over);
+
+/// <summary>§8.2 分配器預覽：直接把格子交給 Allocator.Allocate（使用者實作）。</summary>
+public record AllocatePreviewRequest(decimal Budget, List<Services.Allocation.AllocationCell> Cells, decimal RoundingUnit, string? ReleasedShareReceiverKey);
 
 public record FixedItemDto(
     int Id,

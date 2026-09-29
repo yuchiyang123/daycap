@@ -122,7 +122,23 @@ public class PeriodService(
     {
         var timeline = await settings.GetTimelineAsync(period.UserId, ct);
         var days = await calendar.GetDaysAsync(period.UserId, period.StartDate, period.EndDate, ct);
-        var plan = PlanBuilder.Build(period.StartDate, period.EndDate, timeline, days);
+        decimal? previousIncome = null;
+        if (timeline.For(period.StartDate).Doc.Kind == IncomeKind.Variable && depth < 2)
+        {
+            // 非固定收入：% 基準用上期實際收入（含薪資調整）
+            var prev = await db.Periods.AsNoTracking().Where(p => p.UserId == period.UserId && p.EndDate < period.StartDate)
+                .OrderByDescending(p => p.EndDate).Select(p => (int?)p.Id).FirstOrDefaultAsync(ct);
+            if (prev is { } pid)
+            {
+                if (!cache.TryGetValue(pid, out var pv))
+                {
+                    pv = await ComputeInternalAsync(await LoadAsync(period.UserId, pid, ct, tracking: false), null, cache, depth + 1, ct);
+                    cache[pid] = pv;
+                }
+                previousIncome = pv.Income;
+            }
+        }
+        var plan = PlanBuilder.Build(period.StartDate, period.EndDate, timeline, days, previousIncome);
         var dayStart = timeline.For(clock.Today).Doc.DayStart;
         var today = clock.LogicalToday(dayStart);
         PeriodView Run(IReadOnlyList<ReconDiff> diffs) =>

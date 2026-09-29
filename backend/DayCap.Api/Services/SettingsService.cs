@@ -19,6 +19,9 @@ public interface ISettingsService
 
     /// <summary>回報時登記的訂閱：在最新設定裡加一筆固定項目，存成明天生效的新版本（呼叫端負責 SaveChanges）。</summary>
     Task AddFixedItemAsync(string userId, int categoryId, FixedItemDoc item, CancellationToken ct = default);
+
+    /// <summary>設定頁即時合計：用草稿算出新設定生效那一期的額度與每日類排程（§7、§8.2）。</summary>
+    Task<SettingsEstimate> EstimateAsync(string userId, SettingsDto draft, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -26,7 +29,7 @@ public interface ISettingsService
 /// 一般儲存的生效日＝明天（邏輯日）；更正流程可以指定過去的日期，但要填原因。
 /// 使用者第一次讀設定時：有舊的覆寫式設定就匯入，沒有就給一份預設值；這份初始版本從最早開始生效。
 /// </summary>
-public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsService
+public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarService calendar) : ISettingsService
 {
     public const string DefaultDayStart = "04:00";
 
@@ -67,6 +70,20 @@ public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsSer
         else
         {
             effectiveFrom = today.AddDays(1);
+        }
+
+        // §8.2：自己設定模式下，每日類的排程超過額度就擋住儲存（不只變紅）
+        // 更正可以從很久以前生效，檢查「從現在起受影響的那一期」
+        var estimate = await EstimateDocAsync(userId, doc, effectiveFrom < today ? today : effectiveFrom, ct);
+        var over = estimate.Categories.Where(c => c.Over > 0).ToList();
+        if (over.Count > 0)
+        {
+            var parts = over.Select(c =>
+            {
+                var cat = doc.Categories[c.Index];
+                return $"「{cat.Name}」平日 {c.WeekdayTotal:N0} + 假日 {c.HolidayTotal:N0} = {c.Scheduled:N0}，超過額度 {c.Budget:N0}（多 {c.Over:N0}）";
+            });
+            throw new ValidationException($"{string.Join("；", parts)}。請調低金額或提高額度。");
         }
 
         profile.StartDate = req.Settings.StartDate;
@@ -119,6 +136,72 @@ public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsSer
             Note = $"登記訂閱：{item.Name}",
             Document = SettingsJson.Serialize(withItem),
         });
+    }
+
+    public async Task<SettingsEstimate> EstimateAsync(string userId, SettingsDto draft, CancellationToken ct = default)
+    {
+        var timeline = await GetTimelineAsync(userId, ct);
+        var today = clock.LogicalToday(timeline.For(clock.Today).Doc.DayStart);
+        SettingsDocument doc;
+        try
+        {
+            doc = Validate(draft);
+        }
+        catch (ValidationException ex)
+        {
+            return new SettingsEstimate(today, today, 0, 0, 0, 0, 0, 0, 0, [], [ex.Message]);
+        }
+        return await EstimateDocAsync(userId, doc, today.AddDays(1), ct);
+    }
+
+    /// <summary>新設定生效那天所在的那一期：已經存在的期間就用它的起訖，否則依發薪規則推。</summary>
+    private async Task<SettingsEstimate> EstimateDocAsync(string userId, SettingsDocument doc, DateOnly date, CancellationToken ct)
+    {
+        var existing = await db.Periods.AsNoTracking()
+            .Where(p => p.UserId == userId && p.StartDate <= date && p.EndDate >= date)
+            .Select(p => new { p.StartDate, p.EndDate }).FirstOrDefaultAsync(ct);
+        DateOnly start, end;
+        if (existing is not null)
+        {
+            (start, end) = (existing.StartDate, existing.EndDate);
+        }
+        else
+        {
+            var around = await calendar.GetDaysAsync(userId, date.AddDays(-80), date.AddDays(80), ct);
+            bool Off(DateOnly d) => around.TryGetValue(d, out var i) ? i.IsHoliday : d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+            start = Payday.LatestOnOrBefore(date, doc.Payday, Off);
+            end = Payday.NextAfter(start, doc.Payday, Off).AddDays(-1);
+        }
+
+        var days = await calendar.GetDaysAsync(userId, start, end, ct);
+        var weekdays = days.Count(d => !d.Value.IsHoliday);
+        var holidays = days.Count(d => d.Value.IsHoliday);
+        var charges = BudgetMath.FixedCharges(doc, start, end);
+        var budgets = BudgetMath.CategoryBudgets(doc, charges, doc.MonthlyIncome);
+        var fixedTotal = charges.Sum(f => f.Amount);
+        var pctBase = doc.Base == PercentBase.AfterFixed ? Math.Max(0, doc.MonthlyIncome - fixedTotal) : doc.MonthlyIncome;
+
+        var cats = doc.Categories.Select((c, i) =>
+        {
+            decimal wd = 0, hd = 0;
+            if (c.Mode == BudgetMode.Daily)
+            {
+                var (units, _, _) = BudgetMath.AutoUnits(c, budgets[c.Id], weekdays, holidays);
+                foreach (var s in c.Slots)
+                {
+                    wd += (units?.GetValueOrDefault($"{s.Id}:w") ?? s.WorkdayAmount) * weekdays;
+                    hd += (units?.GetValueOrDefault($"{s.Id}:h") ?? s.HolidayAmount) * holidays;
+                }
+            }
+            var scheduled = wd + hd;
+            // 只有「自己設定」的每日類要擋；自動分配由分配器保證不超過
+            var manual = c.Mode == BudgetMode.Daily && c.Auto is not { Enabled: true };
+            return new CategoryEstimate(i, budgets[c.Id], wd, hd, scheduled, manual ? Math.Max(0, scheduled - budgets[c.Id]) : 0);
+        }).ToList();
+
+        return new SettingsEstimate(start, end, weekdays, holidays, doc.MonthlyIncome, fixedTotal, pctBase,
+            doc.Categories.Where(c => c.Mode != BudgetMode.Fixed && c.IsPercent).Sum(c => c.Percent),
+            doc.MonthlyIncome - budgets.Values.Sum(), cats, []);
     }
 
     public async Task<UserProfile> EnsureProfileAsync(string userId, CancellationToken ct = default)
@@ -201,6 +284,9 @@ public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsSer
         if (!Enum.IsDefined(dto.Payday.Shift)) throw new ValidationException("發薪日遇假日的處理方式不正確。");
         if (dto.Categories.Count == 0) throw new ValidationException("至少要有一個分類。");
         if (dto.Categories.Count > 16) throw new ValidationException("分類最多 16 個。");
+        if (!Enum.IsDefined(dto.PercentBase) || !Enum.IsDefined(dto.IncomeKind)) throw new ValidationException("收入設定不正確。");
+        var pctTotal = dto.Categories.Where(c => c.Mode != BudgetMode.Fixed && c.UsePercent).Sum(c => c.Percent);
+        if (pctTotal > 100) throw new ValidationException($"用 % 計算的分類加起來是 {pctTotal:0.##}%，不能超過 100%（§7）。");
 
         foreach (var c in dto.Categories)
         {
@@ -208,6 +294,14 @@ public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsSer
             if (c.Percent is < 0 or > 100) throw new ValidationException($"「{c.Name}」的百分比要在 0 到 100 之間。");
             if (c.Slots.Count > 12) throw new ValidationException($"「{c.Name}」時段最多 12 個。");
             if (c.Mode == BudgetMode.Daily && c.Slots.Count == 0) throw new ValidationException($"「{c.Name}」是每日額度，至少要有一個時段。");
+            if (c.Amount is < 0 or > 100_000_000 || c.Floor is < 0 or > 100_000_000) throw new ValidationException($"「{c.Name}」金額超出範圍。");
+            if (c.Auto is { } auto && (auto.HolidayMultiplier is < 0.1m or > 5m || auto.RoundingUnit is < 1 or > 1000))
+                throw new ValidationException($"「{c.Name}」假日倍率要在 0.1～5，取整單位要在 1～1000。");
+            foreach (var s in c.Slots)
+            {
+                if (s.Weight is < 0 or > 1000 || s.HolidayWeight is < 0 or > 1000 || s.WorkdayLock is < 0 || s.HolidayLock is < 0 || s.WorkdayFloor is < 0 || s.HolidayFloor is < 0)
+                    throw new ValidationException($"「{c.Name}・{s.Name}」權重、鎖定或底線不正確。");
+            }
 
             // 時段邊界銜接（§3.2）：第一個從邏輯日起點開始，之後依序往後，最後一個到隔天起點
             var previous = -1;
@@ -243,10 +337,17 @@ public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsSer
                 c.Id, c.Name.Trim(), c.Group, c.Mode,
                 c.Mode == BudgetMode.Fixed ? 0 : Math.Round(c.Percent, 2),
                 c.Slots.Select(s => new SlotDoc(s.Id, s.Name.Trim(), SettingsDocument.ParseTime(s.Start).ToString(@"hh\:mm"),
-                    Math.Round(s.WorkdayAmount, 0), Math.Round(s.HolidayAmount, 0))).ToList(),
+                    Math.Round(s.WorkdayAmount, 0), Math.Round(s.HolidayAmount, 0),
+                    s.Weight, s.WorkdayLock, s.HolidayLock, s.WorkdayFloor, s.HolidayFloor, s.HolidayWeight)).ToList(),
                 c.FixedItems.Select(f => new FixedItemDoc(f.Id, f.Name.Trim(), Math.Round(f.Amount, 0), f.DueDay, f.IsSubscription,
-                    f.Cycle, f.Cycle == BillingCycle.Monthly ? null : f.BillingMonth ?? 1, f.IsActive, f.ActiveFrom)).ToList()
-            )).ToList());
+                    f.Cycle, f.Cycle == BillingCycle.Monthly ? null : f.BillingMonth ?? 1, f.IsActive, f.ActiveFrom)).ToList(),
+                c.Mode == BudgetMode.Fixed ? null : c.UsePercent,
+                c.Mode == BudgetMode.Fixed || c.UsePercent ? null : Math.Round(c.Amount ?? 0, 0),
+                c.Floor,
+                c.Mode == BudgetMode.Daily ? c.Auto : null
+            )).ToList(),
+            dto.PercentBase,
+            dto.IncomeKind);
     }
 
     private static bool TryParseTime(string? s, out TimeSpan t) =>
@@ -287,9 +388,13 @@ public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsSer
         startDate,
         d.Categories.Select(c => new CategoryDto(
             c.Id, c.Name, c.Group, c.Mode, c.Percent,
-            c.Slots.Select(s => new SlotDto(s.Id, s.Name, s.Start, s.WorkdayAmount, s.HolidayAmount)).ToList(),
-            c.FixedItems.Select(f => new FixedItemDto(f.Id, f.Name, f.Amount, f.DueDay, f.IsSubscription, f.Cycle, f.BillingMonth, f.IsActive, f.ActiveFrom)).ToList()
-        )).ToList());
+            c.Slots.Select(s => new SlotDto(s.Id, s.Name, s.Start, s.WorkdayAmount, s.HolidayAmount,
+                s.Weight, s.WorkdayLock, s.HolidayLock, s.WorkdayFloor, s.HolidayFloor, s.HolidayWeight)).ToList(),
+            c.FixedItems.Select(f => new FixedItemDto(f.Id, f.Name, f.Amount, f.DueDay, f.IsSubscription, f.Cycle, f.BillingMonth, f.IsActive, f.ActiveFrom)).ToList(),
+            c.IsPercent, c.Amount, c.Floor, c.Auto
+        )).ToList(),
+        d.Base,
+        d.Kind);
 
     /// <summary>舊的覆寫式設定 → 一份設定文件（Id 沿用，回報才對得上）。</summary>
     private static SettingsDocument FromLegacy(UserProfile profile, List<Category> legacy) => new(
@@ -312,7 +417,10 @@ public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsSer
         return TimeSpan.FromMinutes(minutes % (24 * 60)).ToString(@"hh\:mm");
     }
 
-    /// <summary>第一次使用時的預設（以 55K 月薪為例），全部都能在設定頁改。Id 先填 0，由 AssignIds 配發。</summary>
+    /// <summary>
+    /// 第一次使用時的預設（以 55K 月薪為例），全部都能在設定頁改。Id 先填 0，由 AssignIds 配發。
+    /// % 用規格 §7 的基準：佔「月收入扣掉固定支出後」。
+    /// </summary>
     private static SettingsDocument DefaultDocument() => new(
         DefaultDayStart,
         55000,
@@ -328,20 +436,22 @@ public class SettingsService(DayCapDbContext db, IAppClock clock) : ISettingsSer
                 new(0, "手機月租", 599, 15, false, BillingCycle.Monthly, null, true, null),
                 new(0, "影音串流", 390, 8, true, BillingCycle.Monthly, null, true, null),
             ]),
-            new(0, "餐費", CategoryGroup.Food, BudgetMode.Daily, 22,
+            new(0, "餐費", CategoryGroup.Food, BudgetMode.Daily, 48,
             [
                 new(0, "早餐", "04:00", 70, 90),
                 new(0, "午餐", "10:30", 120, 180),
                 new(0, "晚餐", "16:00", 150, 200),
             ], []),
-            new(0, "交通", CategoryGroup.Transport, BudgetMode.Daily, 4, [new(0, "通勤", "04:00", 60, 0)], []),
-            new(0, "衣著", CategoryGroup.Clothing, BudgetMode.Envelope, 3, [], []),
-            new(0, "進修", CategoryGroup.Education, BudgetMode.Envelope, 3, [], []),
-            new(0, "娛樂", CategoryGroup.Leisure, BudgetMode.Envelope, 8, [], []),
+            new(0, "交通", CategoryGroup.Transport, BudgetMode.Daily, 8, [new(0, "通勤", "04:00", 60, 0)], []),
+            new(0, "衣著", CategoryGroup.Clothing, BudgetMode.Envelope, 6, [], []),
+            new(0, "進修", CategoryGroup.Education, BudgetMode.Envelope, 6, [], []),
+            new(0, "娛樂", CategoryGroup.Leisure, BudgetMode.Envelope, 17, [], []),
             new(0, "儲蓄", CategoryGroup.Savings, BudgetMode.Fixed, 0, [],
             [
                 new(0, "0050 定期定額", 10000, 6, false, BillingCycle.Monthly, null, true, null),
                 new(0, "緊急預備金", 5000, 6, false, BillingCycle.Monthly, null, true, null),
             ]),
-        ]);
+        ],
+        PercentBase.AfterFixed,
+        IncomeKind.Fixed);
 }

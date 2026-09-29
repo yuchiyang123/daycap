@@ -69,7 +69,8 @@ public static class BudgetEngine
             if (gap != 0)
             {
                 lines.Add(new PoolLine(period.StartDate, gap, "Opening",
-                    gap > 0 ? $"{c.Name}額度未排進日程的部分" : $"{c.Name}日程排超過額度", null, null));
+                    plan.GapLabels.TryGetValue(c.CategoryId, out var gapLabel) && gap > 0 ? gapLabel
+                    : gap > 0 ? $"{c.Name}額度未排進日程的部分" : $"{c.Name}日程排超過額度", null, null));
             }
         }
         foreach (var adj in incomeAdjustments)
@@ -249,7 +250,8 @@ public static class BudgetEngine
                 .Select(f => new FixedChargeView(f.FixedItemId, f.CategoryId, f.Name, f.Amount, f.DueDate, f.IsSubscription)).ToList(),
             transfers.OrderByDescending(t => t.CreatedAt)
                 .Select(t => new PoolTransferView(t.Id, t.Date, t.Amount, t.Note, t.CategoryId)).ToList(),
-            reconViews);
+            reconViews,
+            plan.Warnings);
     }
 
     private sealed record Event(DateTime At, int Order, int Id, Entry? Entry, PoolTransfer? Transfer, TodayLowering? Lowering, ReconDiff? Recon);

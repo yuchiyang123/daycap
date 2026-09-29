@@ -151,6 +151,8 @@ async function savePayday() {
       </div>
     </header>
 
+    <p v-for="w in period.warnings" :key="w" class="notice-line">{{ w }}</p>
+
     <div class="tiles">
       <div class="tile">
         <span class="label">固定支出</span>

@@ -24,7 +24,7 @@ public sealed class PeriodServiceTests : IDisposable
         _conn.Open();
         _db = new DayCapDbContext(new DbContextOptionsBuilder<DayCapDbContext>().UseSqlite(_conn).Options);
         _db.Database.Migrate();
-        _settings = new SettingsService(_db, _clock);
+        _settings = new SettingsService(_db, _clock, _calendar);
         _periods = new PeriodService(_db, _settings, _calendar, _clock);
         _entries = new EntryService(_db, _periods, _settings, _clock);
     }
@@ -107,7 +107,7 @@ public sealed class PeriodServiceTests : IDisposable
         await Assert.ThrowsAsync<Common.ValidationException>(() =>
             _settings.SaveAsync("u", new SaveSettingsRequest(s, new DateOnly(2026, 10, 1), " ")));
 
-        var ok = await _settings.SaveAsync("u", new SaveSettingsRequest(s with { MonthlyIncome = 50000 }, new DateOnly(2026, 10, 1), "薪資單發現記錯"));
+        var ok = await _settings.SaveAsync("u", new SaveSettingsRequest(s with { MonthlyIncome = 56000 }, new DateOnly(2026, 10, 1), "薪資單發現記錯"));
         Assert.Contains(ok.Versions, v => v.IsCorrection && v.EffectiveFrom == new DateOnly(2026, 10, 1));
     }
 
@@ -159,6 +159,64 @@ public sealed class PeriodServiceTests : IDisposable
         var c = saved.Settings.Categories.Single();
         Assert.Equal(cat.Id, c.Id);
         Assert.Equal(cat.Slots[0].Id, c.Slots.Single().Id);
+    }
+
+    [Fact]
+    public async Task Percent_after_fixed_uses_income_minus_fixed_charges_as_the_base()
+    {
+        await Configure(s => s with
+        {
+            MonthlyIncome = 40000,
+            PercentBase = PercentBase.AfterFixed,
+            Payday = new PaydayRule(1, HolidayShift.None),
+            Categories = s.Categories.Select(c => c.Name switch
+            {
+                "居住" => c with { FixedItems = [new FixedItemDto(0, "房租", 12000, 5, false, BillingCycle.Monthly, null, true, null)] },
+                "娛樂" => c with { Percent = 10 },
+                _ => c.Mode == BudgetMode.Fixed ? c with { FixedItems = [] } : c,
+            }).ToList(),
+        });
+
+        var view = await _periods.GetCurrentAsync("u");
+
+        Assert.Equal(2800, view.Categories.Single(c => c.Name == "娛樂").Budget); // (40,000 − 12,000) × 10%
+    }
+
+    [Fact]
+    public async Task Percentages_over_100_are_rejected()
+    {
+        var s = (await _settings.GetAsync("u")).Settings;
+        var tooMuch = s with { Categories = s.Categories.Select(c => c.Name == "娛樂" ? c with { Percent = 90 } : c).ToList() };
+
+        var ex = await Assert.ThrowsAsync<Common.ValidationException>(() => _settings.SaveAsync("u", new SaveSettingsRequest(tooMuch, null, null)));
+        Assert.Contains("100%", ex.Message);
+    }
+
+    [Fact]
+    public async Task Manual_meal_schedule_over_budget_blocks_saving()
+    {
+        await MonthlyPeriods();
+        var s = (await _settings.GetAsync("u")).Settings;
+
+        var ex = await Assert.ThrowsAsync<Common.ValidationException>(() =>
+            _settings.SaveAsync("u", new SaveSettingsRequest(WithSlot(s, "午餐", x => x with { WorkdayAmount = 900 }), null, null)));
+        Assert.Contains("超過額度", ex.Message);
+    }
+
+    [Fact]
+    public async Task Auto_mode_falls_back_to_manual_amounts_until_the_allocator_is_implemented()
+    {
+        await Configure(s => s with
+        {
+            Payday = new PaydayRule(1, HolidayShift.None),
+            Categories = s.Categories.Select(c => c.Name == "餐費" ? c with { Auto = new MealAuto(true, 1.2m, 5) } : c).ToList(),
+        });
+
+        var view = await _periods.GetCurrentAsync("u");
+
+        // Allocator.Allocate 由使用者實作（§8.1），目前丟 NotImplementedException → 先用手動金額並提醒
+        Assert.Contains(view.Warnings, w => w.Contains("分配器尚未實作"));
+        Assert.Equal(120, view.Days.First(d => !d.IsHoliday).Slots.Single(x => x.Name == "午餐").BasePlanned);
     }
 
     [Fact]
@@ -280,7 +338,7 @@ public sealed class PeriodServiceTests : IDisposable
         {
             Categories = s.Categories.Select(c => c.Name != "固定帳單" ? c : c with
             {
-                FixedItems = [.. c.FixedItems, new FixedItemDto(0, "保險季繳", 3000, 20, false, BillingCycle.Quarterly, 1, true, null)],
+                FixedItems = [.. c.FixedItems, new FixedItemDto(0, "保險季繳", 300, 20, false, BillingCycle.Quarterly, 1, true, null)],
             }).ToList(),
         });
 
