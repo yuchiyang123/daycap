@@ -62,10 +62,14 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
                 sub.Cycle, sub.Cycle == BillingCycle.Monthly ? null : req.Date.Month, true, period.EndDate.AddDays(1)), ct);
         }
 
+        var jar = req.JarId is { } jarId ? await PrepareJarPaymentAsync(userId, entry, jarId, req, ct) : null;
+
         period.Entries.Add(entry);
         await db.SaveChangesAsync(ct);
+        if (jar is not null) await AfterJarPaymentAsync(userId, period, entry, jar, view.Today, ct);
 
         var after = await periods.ComputeAsync(period, ct);
+        if (await AutoSaveSurplusAsync(userId, period, entry, after, ct)) after = await periods.ComputeAsync(period, ct);
         if (req.Guardrail is { } choice && choice != ShortfallChoice.Pool)
         {
             var excess = after.Entries.FirstOrDefault(e => e.Id == entry.Id)?.Unabsorbed ?? 0;
@@ -76,6 +80,70 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
             }
         }
         return after;
+    }
+
+    /// <summary>從罐子付（§11.2）：罐子餘額能付多少就付多少，超過的部分照一般超支規則。</summary>
+    private async Task<Jar> PrepareJarPaymentAsync(string userId, Entry entry, int jarId, CreateEntryRequest req, CancellationToken ct)
+    {
+        if (req.SlotId is not null || req.InputMode != EntryInputMode.Actual)
+            throw new ValidationException("從罐子付要用「額外花費」、輸入實際金額。");
+        var jar = await db.Jars.FirstOrDefaultAsync(j => j.Id == jarId && j.UserId == userId && j.ClosedAt == null, ct)
+                  ?? throw new ValidationException("找不到這個罐子，或已經關閉。");
+        var balance = (await JarMath.BalancesAsync(db, userId, ct)).GetValueOrDefault(jar.Id);
+        entry.JarId = jar.Id;
+        entry.JarCovered = Math.Max(0, Math.Min(entry.InputAmount, balance));
+        return jar;
+    }
+
+    /// <summary>
+    /// 預約付掉後：預留比實際多的部分回待分配池（結餘規則），罐子關閉；刪掉這筆回報時一起還原。
+    /// 年繳付掉後：罐子留著，下次繳費日往後一年，繼續每期提撥。
+    /// </summary>
+    private async Task AfterJarPaymentAsync(string userId, BudgetPeriod period, Entry entry, Jar jar, DateOnly today, CancellationToken ct)
+    {
+        if (jar.Kind == JarKind.Reservation)
+        {
+            var leftover = (await JarMath.BalancesAsync(db, userId, ct)).GetValueOrDefault(jar.Id);
+            if (leftover > 0)
+            {
+                period.PoolTransfers.Add(new PoolTransfer
+                {
+                    Date = entry.Date, Amount = leftover, JarId = jar.Id, SourceEntryId = entry.Id,
+                    Note = $"預約「{jar.Name}」比實際多預留的", CreatedAt = clock.UtcNow,
+                });
+            }
+            jar.ClosedAt = clock.UtcNow;
+            jar.ClosedByEntryId = entry.Id;
+        }
+        else if (jar.Kind == JarKind.Annual && jar.DueDate is { } due && due <= today.AddDays(60))
+        {
+            jar.DueDate = due.AddYears(1);
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>自動規則（§11.2 第 3 點）：時段省下的錢，照各罐子設定的比例自動存進去；刪回報時一起作廢。</summary>
+    private async Task<bool> AutoSaveSurplusAsync(string userId, BudgetPeriod period, Entry entry, PeriodView after, CancellationToken ct)
+    {
+        if (entry.SlotId is null) return false;
+        var saved = -(after.Entries.FirstOrDefault(e => e.Id == entry.Id)?.Diff ?? 0);
+        if (saved <= 0) return false;
+        var jars = await db.Jars.AsNoTracking()
+            .Where(j => j.UserId == userId && j.ClosedAt == null && j.AutoSurplusPercent != null && j.AutoSurplusPercent > 0)
+            .ToListAsync(ct);
+        foreach (var j in jars)
+        {
+            var amount = Math.Floor(saved * j.AutoSurplusPercent!.Value / 100m);
+            if (amount <= 0) continue;
+            period.PoolTransfers.Add(new PoolTransfer
+            {
+                Date = entry.Date, Amount = -amount, JarId = j.Id, SourceEntryId = entry.Id,
+                Note = $"自動存進{j.Name}（省下的 {j.AutoSurplusPercent:0.#}%）", CreatedAt = clock.UtcNow,
+            });
+        }
+        if (jars.Count == 0) return false;
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     /// <summary>
@@ -186,6 +254,12 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
 
         var entry = BuildEntry(period, before, req);
         entry.Id = int.MaxValue;
+        if (req.JarId is { } jarId && req.SlotId is null)
+        {
+            var balance = (await JarMath.BalancesAsync(db, userId, ct)).GetValueOrDefault(jarId);
+            entry.JarId = jarId;
+            entry.JarCovered = Math.Max(0, Math.Min(entry.InputAmount, balance));
+        }
         if (req.SlotId is { } slotId)
         {
             entry.ReplacesId = period.Entries.Active()
@@ -225,6 +299,12 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
     /// <summary>刪回報時，把護欄選擇產生的「補回待分配池」、結轉、存款吸收一起作廢。</summary>
     private async Task VoidLinkedAsync(string userId, BudgetPeriod period, int entryId, CancellationToken ct)
     {
+        // 預約因為這筆回報而關閉的罐子重新打開
+        foreach (var jar in await db.Jars.Where(j => j.UserId == userId && j.ClosedByEntryId == entryId).ToListAsync(ct))
+        {
+            jar.ClosedAt = null;
+            jar.ClosedByEntryId = null;
+        }
         foreach (var t in period.PoolTransfers.Active().Where(t => t.SourceEntryId == entryId))
         {
             period.PoolTransfers.Add(new PoolTransfer { Date = t.Date, Note = "刪除", IsVoid = true, ReplacesId = t.Id, SourceEntryId = entryId, CreatedAt = clock.UtcNow });

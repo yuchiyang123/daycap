@@ -83,6 +83,11 @@ public class Entry : IFact
     /// <summary>用哪個帳戶付的（選填）。信用卡 = 欠款增加；其他帳戶 = 餘額減少。只影響帳戶推算，不影響預算。</summary>
     public int? AccountId { get; set; }
 
+    /// <summary>從罐子付（§11.2）：JarCovered 這部分由罐子出，不算進這期的預算；超過罐子餘額的部分照一般規則。</summary>
+    public int? JarId { get; set; }
+
+    public decimal JarCovered { get; set; }
+
     public DateTime? OccurredAtUtc { get; set; }
     public string? TimeZoneId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -104,6 +109,12 @@ public class PoolTransfer : IFact
 
     /// <summary>因為某筆回報的護欄選擇而產生（刪掉那筆回報時一起作廢）。</summary>
     public int? SourceEntryId { get; set; }
+
+    /// <summary>錢進出罐子（§11.2）：負數 = 從待分配池存進罐子，正數 = 從罐子拿回池子。</summary>
+    public int? JarId { get; set; }
+
+    /// <summary>預約支出：池子不夠的部分攤到之後每天的額度（§11.2）。</summary>
+    public bool SpreadShortfall { get; set; }
     public decimal Amount { get; set; }
     public string Note { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

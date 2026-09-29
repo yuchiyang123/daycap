@@ -12,6 +12,7 @@ const lines = computed(() => {
   if (!p) return []
   const e = p.entry
   const out: { text: string; tone?: 'good' | 'bad' }[] = []
+  if (e.jarCovered) out.push({ text: `罐子付 ${money(e.jarCovered)}，這部分不算進這期預算` })
   if (props.envelope) {
     out.push({ text: `這個分類本期剩 ${money(p.categoryRemainingBefore)} → ${money(p.categoryRemainingAfter)}` })
     if (e.envelopeOver > 0) out.push({ text: `超過月額度 ${money(e.envelopeOver)}，從待分配池扣`, tone: 'bad' })

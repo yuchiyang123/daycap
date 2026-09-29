@@ -121,9 +121,10 @@ async function removeExtra(id: number) {
               <template v-if="e!.fromPool">・待分配池 {{ signed(-e!.fromPool) }}</template>
               <template v-if="e!.spread">・之後 {{ e!.spreadDays }} 天每天少約 {{ money(e!.spreadPerDay) }}</template>
               <template v-if="e!.envelopeOver">・超出月額度 {{ money(e!.envelopeOver) }}</template>
+              <template v-if="e!.jarCovered">・罐子付 {{ money(e!.jarCovered) }}</template>
             </span>
           </span>
-          <span class="s-amt num"><b>{{ money(e!.actual) }}</b></span>
+          <span class="s-amt num"><b>{{ money(e!.actual + (e!.jarCovered ?? 0)) }}</b></span>
           <button type="button" class="btn quiet sm danger" @click="removeExtra(e!.id)">
             {{ removing === e!.id ? '確認刪除' : '刪除' }}
           </button>

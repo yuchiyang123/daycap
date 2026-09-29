@@ -102,11 +102,14 @@ public record EntryView(
     DateTime CreatedAt,
     // 攤到幾天、平均每天少多少（§10.1 預覽「接下來 16 天每天少 75」）
     int SpreadDays,
-    decimal SpreadPerDay);
+    decimal SpreadPerDay,
+    // 從罐子付的部分（§11.2），不算進預算
+    decimal JarCovered = 0,
+    int? JarId = null);
 
 public record FixedChargeView(int? FixedItemId, int CategoryId, string Name, decimal Amount, DateOnly? DueDate, bool IsSubscription);
 
-public record PoolTransferView(int Id, DateOnly Date, decimal Amount, string Note, int? CategoryId);
+public record PoolTransferView(int Id, DateOnly Date, decimal Amount, string Note, int? CategoryId, int? JarId = null);
 
 public record IncomeAdjustmentView(int Id, IncomeAdjustmentKind Kind, decimal? Days, decimal? Hours, decimal Amount, string? Note, string Label);
 
@@ -124,7 +127,9 @@ public record CreateEntryRequest(
     // 超支超過護欄下限、後面攤不完的部分怎麼處理（§10.2）；null = 待分配池
     ShortfallChoice? Guardrail = null,
     // Guardrail = Savings 時從哪個帳戶吸收
-    int? GuardrailAccountId = null);
+    int? GuardrailAccountId = null,
+    // 從罐子付（§11.2）：額外花費才可以
+    int? JarId = null);
 
 /// <summary>回報時順便把它登記成訂閱：下個週期起變成固定支出。</summary>
 public record SubscriptionRequest(string Name, int TargetCategoryId, BillingCycle Cycle, int? DueDay);

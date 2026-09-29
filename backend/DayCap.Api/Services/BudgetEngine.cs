@@ -149,8 +149,15 @@ public static class BudgetEngine
                     continue;
                 }
 
+                if (t.JarId is not null && t.SpreadShortfall && t.Amount < 0)
+                {
+                    ApplyReservation(t, allocations, effective, reportedKeys, toLogicalDate, plan.FloorPercent, ref pool, lines);
+                    continue;
+                }
+
                 pool += t.Amount;
-                lines.Add(new PoolLine(t.Date, t.Amount, "Transfer", string.IsNullOrWhiteSpace(t.Note) ? "手動調整" : t.Note, null, t.Id));
+                lines.Add(new PoolLine(t.Date, t.Amount, t.JarId is null ? "Transfer" : "Jar",
+                    string.IsNullOrWhiteSpace(t.Note) ? "手動調整" : t.Note, null, t.Id));
                 continue;
             }
 
@@ -253,7 +260,7 @@ public static class BudgetEngine
             plan.FixedCharges.OrderBy(f => f.DueDate).ThenBy(f => f.Name)
                 .Select(f => new FixedChargeView(f.FixedItemId, f.CategoryId, f.Name, f.Amount, f.DueDate, f.IsSubscription)).ToList(),
             transfers.OrderByDescending(t => t.CreatedAt)
-                .Select(t => new PoolTransferView(t.Id, t.Date, t.Amount, t.Note, t.CategoryId)).ToList(),
+                .Select(t => new PoolTransferView(t.Id, t.Date, t.Amount, t.Note, t.CategoryId, t.JarId)).ToList(),
             reconViews,
             plan.Warnings);
     }
@@ -312,7 +319,8 @@ public static class BudgetEngine
 
     private static EntryView ApplyEnvelope(Entry e, PeriodCategory cat, decimal budget, Dictionary<int, decimal> envelopeSpent, ref decimal pool, List<PoolLine> lines)
     {
-        var actual = Math.Max(0, e.InputAmount);
+        // 從罐子付的部分不算進預算（§11.2）
+        var actual = Math.Max(0, e.InputAmount - e.JarCovered);
         var remaining = budget - envelopeSpent[cat.CategoryId];
         envelopeSpent[cat.CategoryId] += actual;
         var over = actual - Math.Max(remaining, 0);
@@ -324,7 +332,7 @@ public static class BudgetEngine
             lines.Add(new PoolLine(e.Date, -over, "EnvelopeOver", $"{cat.Name}超過月額度", e.Id, null));
         }
         return new EntryView(e.Id, e.Date, cat.CategoryId, cat.Name, null, null, e.InputMode, e.InputAmount,
-            actual, 0, actual, e.UsePool, 0, 0, 0, 0, envelopeOver, e.Note, e.IsSubscription, e.CreatedAt, 0, 0);
+            actual, 0, actual, e.UsePool, 0, 0, 0, 0, envelopeOver, e.Note, e.IsSubscription, e.CreatedAt, 0, 0, e.JarCovered, e.JarId);
     }
 
     private static EntryView ApplyDaily(
@@ -346,7 +354,7 @@ public static class BudgetEngine
         var actual = e.SlotId is not null && e.InputMode == EntryInputMode.Overage
             ? planned + e.InputAmount
             : e.InputAmount;
-        actual = Math.Max(0, actual);
+        actual = Math.Max(0, actual - e.JarCovered);
         var diff = actual - planned;
         var slotName = alloc?.SlotName;
 
@@ -394,7 +402,45 @@ public static class BudgetEngine
 
         return new EntryView(e.Id, e.Date, cat.CategoryId, cat.Name, e.SlotId, slotName, e.InputMode, e.InputAmount,
             actual, planned, diff, e.UsePool, fromPool, spread, spreadSlots, unabsorbed, 0, e.Note, e.IsSubscription, e.CreatedAt,
-            spreadDays, spreadDays > 0 ? Math.Round(spread / spreadDays, 0) : 0);
+            spreadDays, spreadDays > 0 ? Math.Round(spread / spreadDays, 0) : 0, e.JarCovered, e.JarId);
+    }
+
+    /// <summary>
+    /// 預約支出（§11.2）：登記當下從待分配池扣預留額；池子不夠的部分攤到之後每天的每日額度（護欄照樣適用），
+    /// 還攤不完的才讓池子變負。
+    /// </summary>
+    private static void ApplyReservation(
+        PoolTransfer t,
+        List<DayAllocation> allocations,
+        Dictionary<(DateOnly, int), decimal> effective,
+        HashSet<(DateOnly, int)> reportedKeys,
+        Func<DateTime, DateOnly> toLogicalDate,
+        decimal floorPercent,
+        ref decimal pool,
+        List<PoolLine> lines)
+    {
+        var need = -t.Amount;
+        var label = string.IsNullOrWhiteSpace(t.Note) ? "預約支出" : t.Note;
+        var fromPool = Math.Min(need, Math.Max(pool, 0));
+        if (fromPool > 0)
+        {
+            pool -= fromPool;
+            lines.Add(new PoolLine(t.Date, -fromPool, "Jar", label, null, t.Id));
+        }
+        var rest = need - fromPool;
+        if (rest <= 0) return;
+
+        var cutoff = Max(t.Date, toLogicalDate(t.CreatedAt));
+        var targets = allocations.Where(a => a.Date > cutoff && !reportedKeys.Contains((a.Date, a.SlotId))).ToList();
+        var (spread, _, days) = SpreadOverDays(rest, targets, effective, floorPercent);
+        if (spread > 0)
+            lines.Add(new PoolLine(t.Date, 0, "JarSpread", $"{label}：池子不夠的 {spread:N0} 攤到之後 {days} 天", null, t.Id));
+        var unabsorbed = rest - spread;
+        if (unabsorbed > 0)
+        {
+            pool -= unabsorbed;
+            lines.Add(new PoolLine(t.Date, -unabsorbed, "Jar", $"{label}：攤不下去的部分", null, t.Id));
+        }
     }
 
     /// <summary>

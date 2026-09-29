@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import Sheet from './Sheet.vue'
-import { allocatePool } from '../api/endpoints'
-import { store, setPeriod } from '../lib/store'
-import { modeLabel, money } from '../lib/format'
+import { allocatePool, getJars, moveJar } from '../api/endpoints'
+import type { JarView } from '../api/types'
+import { loadCurrentPeriod, store, setPeriod } from '../lib/store'
+import { modeLabel, money, shortDate } from '../lib/format'
 
 /**
  * 分配剩餘：待分配池還有錢時，全部（或一部分）給某一個分類，或依各分類額度的比例分給全部。
@@ -42,6 +43,27 @@ const preview = computed(() => {
   return variable.value.map((c, i) => ({ c, share: shares[i] }))
 })
 
+// ---- 分配順序（§11.2）：有到期日、還沒存滿的罐子先補 ----
+const jars = ref<JarView[]>([])
+onMounted(async () => {
+  jars.value = await getJars().catch(() => [])
+})
+const dueJars = computed(() => jars.value.filter((j) => !j.closed && j.need > 0 && j.dueDate))
+async function fillJar(j: JarView) {
+  const amount = Math.min(j.need, Math.max(0, period.value.pool.balance))
+  if (amount <= 0) return
+  busy.value = true
+  error.value = null
+  try {
+    jars.value = await moveJar(j.id, amount)
+    await loadCurrentPeriod(true)
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    busy.value = false
+  }
+}
+
 async function submit() {
   if (!valid.value) return
   busy.value = true
@@ -60,6 +82,17 @@ async function submit() {
 <template>
   <Sheet title="分配剩餘" :subtitle="`待分配池目前 ${money(period.pool.balance)}`" @close="emit('close')">
     <form class="form" @submit.prevent="submit">
+      <div v-if="dueJars.length" class="jars">
+        <span class="small muted">先補快到期的罐子</span>
+        <ul class="list shares">
+          <li v-for="j in dueJars" :key="j.id">
+            <span>{{ j.name }}<span class="muted small">・{{ shortDate(j.dueDate!) }}・還差 {{ money(j.need) }}</span></span>
+            <button type="button" class="btn sm" :disabled="busy || period.pool.balance <= 0" @click="fillJar(j)">
+              補 {{ money(Math.min(j.need, Math.max(0, period.pool.balance))) }}
+            </button>
+          </li>
+        </ul>
+      </div>
       <div class="seg" role="group" aria-label="分配方式">
         <button type="button" :aria-pressed="mode === 'single'" @click="mode = 'single'">全部給一個分類</button>
         <button type="button" :aria-pressed="mode === 'proportional'" @click="mode = 'proportional'">依比例分到全部</button>

@@ -300,6 +300,9 @@ export interface EntryView {
   /** 攤到幾天、平均每天少多少（§10.1） */
   spreadDays: number
   spreadPerDay: number
+  /** 從罐子付的部分（§11.2），不算進預算 */
+  jarCovered?: number
+  jarId?: number | null
 }
 
 export type ShortfallChoice = 'Pool' | 'NextPeriod' | 'Split' | 'Savings'
@@ -319,6 +322,7 @@ export interface PoolTransferView {
   amount: number
   note: string
   categoryId: number | null
+  jarId?: number | null
 }
 
 export interface IncomeAdjustmentView {
@@ -412,6 +416,8 @@ export interface CreateEntryRequest {
   /** 超過護欄下限、攤不完的部分怎麼處理（§10.2），預設待分配池 */
   guardrail?: ShortfallChoice | null
   guardrailAccountId?: number | null
+  /** 從罐子付（§11.2）：只有額外花費可以 */
+  jarId?: number | null
 }
 
 export interface EntryPreview {
@@ -562,4 +568,30 @@ export interface AssetsView {
   goals: GoalView[]
   history: { date: string; cash: number; investments: number }[]
   quotesFetchedAt: string | null
+}
+
+// ---- 罐子（§11.2）----
+export type JarKind = 'Reservation' | 'Annual' | 'Goal'
+export interface JarView {
+  id: number
+  kind: JarKind
+  name: string
+  targetAmount: number
+  balance: number
+  need: number
+  dueDate: string | null
+  daysLeft: number | null
+  monthlyAmount: number | null
+  autoSurplusPercent: number | null
+  fixedItemId: number | null
+  closed: boolean
+}
+export interface SaveJarRequest {
+  kind: JarKind
+  name: string
+  targetAmount: number
+  dueDate: string | null
+  monthlyAmount?: number | null
+  autoSurplusPercent?: number | null
+  fixedItemId?: number | null
 }

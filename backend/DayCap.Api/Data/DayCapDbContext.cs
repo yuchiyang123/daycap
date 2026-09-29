@@ -33,6 +33,7 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<PriceQuote> PriceQuotes => Set<PriceQuote>();
     public DbSet<PushEndpoint> PushEndpoints => Set<PushEndpoint>();
     public DbSet<AppSecret> AppSecrets => Set<AppSecret>();
+    public DbSet<Jar> Jars => Set<Jar>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder c)
     {
@@ -129,6 +130,7 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
             e.HasIndex(x => x.Endpoint).IsUnique();
         });
         b.Entity<AppSecret>().HasKey(x => x.Key);
+        b.Entity<Jar>().HasIndex(x => x.UserId);
         b.Entity<AssetSnapshot>().HasIndex(x => new { x.UserId, x.Date }).IsUnique();
         b.Entity<PriceQuote>(e =>
         {

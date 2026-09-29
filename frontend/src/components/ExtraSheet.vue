@@ -3,8 +3,8 @@ import { computed, ref, watch } from 'vue'
 import Sheet from './Sheet.vue'
 import ImpactPreview from './ImpactPreview.vue'
 import ShortfallPicker from './ShortfallPicker.vue'
-import type { ShortfallChoice } from '../api/types'
-import { createEntry, getAccounts } from '../api/endpoints'
+import type { ShortfallChoice, JarView } from '../api/types'
+import { createEntry, getAccounts, getJars } from '../api/endpoints'
 import type { AccountView } from '../api/types'
 import { onMounted } from 'vue'
 import type { BillingCycle, CreateEntryRequest } from '../api/types'
@@ -36,8 +36,12 @@ const saving = ref(false)
 const error = ref<string | null>(null)
 const payAccounts = ref<AccountView[]>([])
 const accountId = ref<number | null>(null)
+// 從罐子付（§11.2）：預約、年繳到期時用
+const jars = ref<JarView[]>([])
+const jarId = ref<number | null>(null)
 onMounted(async () => {
   payAccounts.value = (await getAccounts().catch(() => ({ accounts: [] as AccountView[] }))).accounts
+  jars.value = (await getJars().catch(() => [] as JarView[])).filter((j) => !j.closed && j.balance > 0)
 })
 
 watch(note, (v, old) => {
@@ -60,6 +64,7 @@ const request = computed<CreateEntryRequest | null>(() => {
     usePool: usePool.value,
     note: note.value.trim() || null,
     subscription: null,
+    jarId: jarId.value,
   }
 })
 
@@ -135,6 +140,15 @@ async function submit() {
           </select>
         </label>
       </div>
+
+      <label v-if="jars.length" class="field">
+        從罐子付（選填）
+        <select v-model="jarId" class="select">
+          <option :value="null">不用，照分類額度</option>
+          <option v-for="j in jars" :key="j.id" :value="j.id">{{ j.name }}（罐子裡 {{ money(j.balance) }}）</option>
+        </select>
+        <span v-if="jarId" class="hint">罐子付得起的部分不算進這期預算；超過的照一般規則{{ jars.find((j) => j.id === jarId)?.kind === 'Reservation' ? '；預約付完剩下的回待分配池' : '' }}</span>
+      </label>
 
       <label class="check">
         <input v-model="usePool" type="checkbox" />

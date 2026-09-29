@@ -22,6 +22,8 @@ import type {
   SettingsView,
   SettingsEstimate,
   MonthEndReport,
+  JarView,
+  SaveJarRequest,
   OnboardingState,
   ApplyTemplateRequest,
   TemplatePreview,
@@ -140,3 +142,11 @@ export const previewTemplate = (body: ApplyTemplateRequest) => api<TemplatePrevi
 export const applyTemplate = (body: ApplyTemplateRequest) => api<TemplatePreview>('/api/onboarding/apply', { method: 'POST', body })
 export const skipOnboarding = () => api<void>('/api/onboarding/skip', { method: 'POST' })
 export const markTipSeen = (key: string) => api<string[]>(`/api/me/tips/${key}`, { method: 'POST' })
+
+// ---- 罐子（§11.2）----
+export const getJars = () => api<JarView[]>('/api/jars')
+export const createJar = (body: SaveJarRequest) => api<JarView[]>('/api/jars', { method: 'POST', body })
+export const updateJar = (id: number, body: SaveJarRequest) => api<JarView[]>(`/api/jars/${id}`, { method: 'PUT', body })
+/** amount > 0 從待分配池存進罐子；< 0 拿回池子 */
+export const moveJar = (id: number, amount: number) => api<JarView[]>(`/api/jars/${id}/move`, { method: 'POST', body: { amount } })
+export const closeJar = (id: number) => api<JarView[]>(`/api/jars/${id}/close`, { method: 'POST' })

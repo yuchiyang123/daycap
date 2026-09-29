@@ -6,6 +6,7 @@ import Meter from '../charts/Meter.vue'
 import { addTransfer, deleteTransfer, setNextPayday } from '../api/endpoints'
 import IncomeSheet from '../components/IncomeSheet.vue'
 import AllocateSheet from '../components/AllocateSheet.vue'
+import JarsPanel from '../components/JarsPanel.vue'
 import { store, setPeriod } from '../lib/store'
 import { groupLabel, modeLabel, money, parseDate, pct, shortDate, signed, toIso } from '../lib/format'
 
@@ -223,6 +224,11 @@ async function savePayday() {
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">罐子<span class="aside">預約支出、年繳預留、儲蓄目標；快到期的在前</span></h2>
+      <JarsPanel />
     </section>
 
     <div class="grid-2">

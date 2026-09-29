@@ -87,6 +87,8 @@ public class PeriodService(
             if (winner is null) throw;
             return await GetAsync(userId, winner.Value, ct);
         }
+        // 年繳罐子每期提撥（§11.2）：只有真正建立這一期的請求會做
+        await JarMath.AddAnnualContributionsAsync(db, period, clock.UtcNow, ct);
         return await ComputeAsync(period, ct);
     }
 
@@ -244,7 +246,7 @@ public class PeriodService(
         if (day is null) return 0;
         var entries = view.Entries.ToDictionary(e => e.Id);
         var outflow = day.Slots.Sum(s => s.Actual ?? s.Planned)
-                      + day.ExtraEntryIds.Where(entries.ContainsKey).Sum(id => entries[id].Actual)
+                      + day.ExtraEntryIds.Where(entries.ContainsKey).Sum(id => entries[id].Actual + entries[id].JarCovered) // 罐子付的錢也真的從帳戶出去了
                       + view.FixedCharges.Where(f => (f.DueDate ?? view.StartDate) == d).Sum(f => f.Amount);
         var inflow = d == view.StartDate ? view.Income : 0;
         return inflow - outflow;
