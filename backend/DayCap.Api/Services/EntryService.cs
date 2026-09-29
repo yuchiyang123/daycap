@@ -493,6 +493,9 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
         return await periods.ComputeAsync(period, ct);
     }
 
+    private static string? ValidTimeZone(string? id) =>
+        id is { Length: > 0 and <= 64 } && TimeZoneInfo.TryFindSystemTimeZoneById(id, out _) ? id : null;
+
     private Entry BuildEntry(BudgetPeriod period, PeriodView view, CreateEntryRequest req)
     {
         if (req.Date < period.StartDate || req.Date > period.EndDate) throw new ValidationException("日期不在這個週期內。");
@@ -500,6 +503,16 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
                   ?? throw new ValidationException("這個週期沒有這個分類。");
         if (cat.Mode == BudgetMode.Fixed) throw new ValidationException($"「{cat.Name}」是鎖定的固定支出，不能回報。");
         var amount = Math.Round(req.Amount, 0);
+        // 外幣（§17）：匯率由使用者填（來源未定，先用手動），採用回報當下的值，換算成台幣記帳
+        string? currency = null;
+        if (req.ForeignAmount is { } foreign)
+        {
+            currency = req.Currency?.Trim().ToUpperInvariant();
+            if (currency is not { Length: 3 } || !currency.All(char.IsAsciiLetterUpper)) throw new ValidationException("幣別要是三個英文字母，例如 JPY。");
+            if (req.FxRate is not > 0 || req.FxRate > 100_000) throw new ValidationException("匯率要大於 0。");
+            if (Math.Abs(foreign) > 1_000_000_000) throw new ValidationException("外幣金額超出範圍。");
+            amount = Math.Round(foreign * req.FxRate.Value, 0, MidpointRounding.AwayFromZero);
+        }
         if (Math.Abs(amount) > 10_000_000) throw new ValidationException("金額超出範圍。");
 
         var inputMode = req.InputMode;
@@ -523,8 +536,11 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
             UsePool = req.UsePool,
             Note = string.IsNullOrEmpty(note) ? null : note,
             SubItem = req.SubItem?.Trim() is { Length: > 0 } sub ? sub[..Math.Min(sub.Length, 30)] : null,
+            Currency = currency,
+            ForeignAmount = currency is null ? null : req.ForeignAmount,
+            FxRate = currency is null ? null : req.FxRate,
             IsSubscription = req.Subscription is not null,
-            TimeZoneId = "Asia/Taipei",
+            TimeZoneId = ValidTimeZone(req.TimeZoneId) ?? "Asia/Taipei",
             CreatedAt = clock.UtcNow,
         };
     }

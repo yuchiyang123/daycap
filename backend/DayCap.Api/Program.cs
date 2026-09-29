@@ -45,6 +45,8 @@ builder.Services.AddScoped<IDebtService, DebtService>();
 builder.Services.AddScoped<IInstallmentService, InstallmentService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
 builder.Services.AddScoped<IUserDataService, UserDataService>();
+builder.Services.AddScoped<ITripService, TripService>();
+builder.Services.AddScoped<IRunwayService, RunwayService>();
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<DayCap.Api.Services.Push.NightlyPushWorker>();
 
 builder.Services.AddHttpClient(CalendarService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));

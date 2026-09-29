@@ -22,6 +22,9 @@ import type {
   SettingsView,
   SettingsEstimate,
   MonthEndReport,
+  TripView,
+  CreateTripRequest,
+  RunwayView,
   InstallmentView,
   CreateInstallmentRequest,
   PrepayMode,
@@ -173,3 +176,9 @@ export const createInstallment = (body: CreateInstallmentRequest) => api<Install
 export const prepayInstallment = (id: number, body: { amount: number; mode: PrepayMode; accountId: number | null; date: string | null }) =>
   api<InstallmentView[]>(`/api/installments/${id}/prepay`, { method: 'POST', body })
 export const deleteInstallment = (id: number) => api<InstallmentView[]>(`/api/installments/${id}`, { method: 'DELETE' })
+
+// ---- 旅遊（§17）與收入中斷（§18）----
+export const getTrips = () => api<TripView[]>('/api/trips')
+export const createTrip = (body: CreateTripRequest) => api<TripView[]>('/api/trips', { method: 'POST', body })
+export const endTrip = (id: number) => api<TripView[]>(`/api/trips/${id}/end`, { method: 'POST' })
+export const getRunway = () => api<RunwayView>('/api/runway')

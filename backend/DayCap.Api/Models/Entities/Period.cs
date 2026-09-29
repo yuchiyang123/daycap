@@ -81,6 +81,11 @@ public class Entry : IFact
 
     /// <summary>類別細項（§13），例如娛樂 → 電影。只是標記，不影響預算重播。</summary>
     public string? SubItem { get; set; }
+
+    /// <summary>外幣（§17）：原幣別、原金額、當時用的匯率；InputAmount 是換算後的台幣。</summary>
+    public string? Currency { get; set; }
+    public decimal? ForeignAmount { get; set; }
+    public decimal? FxRate { get; set; }
     public bool IsSubscription { get; set; }
 
     /// <summary>用哪個帳戶付的（選填）。信用卡 = 欠款增加；其他帳戶 = 餘額減少。只影響帳戶推算，不影響預算。</summary>

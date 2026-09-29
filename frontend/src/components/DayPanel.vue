@@ -75,14 +75,15 @@ async function removeExtra(id: number) {
 
 <template>
   <div class="day">
-    <div v-if="groups.length === 0" class="panel empty">這天沒有排每日額度。</div>
+    <div v-if="day.trip" class="panel empty">旅遊中（{{ day.trip }}）：這天的每日時段暫停，花費記在「額外花費」，從旅遊預算付。</div>
+    <div v-else-if="groups.length === 0" class="panel empty">這天沒有排每日額度。</div>
     <div v-else-if="hasUnreported && day.status !== 'future' && !period.closed" class="whole-day">
       <button type="button" class="btn sm" @click="wholeDay('zero')">{{ armed === 'zero' ? '確認：這天全部 0' : '這天全部 0' }}</button>
       <button type="button" class="btn sm" @click="wholeDay('planned')">{{ armed === 'planned' ? '確認：全部照預算' : '這天全部照預算' }}</button>
       <span class="muted small">在家吃、有人請客就按「全部 0」</span>
     </div>
 
-    <div v-for="g in groups" :key="g.id" class="panel">
+    <div v-for="g in day.trip ? [] : groups" :key="g.id" class="panel">
       <div class="g-head">
         <span class="g-name">{{ g.name }}</span>
         <span class="num muted">這天 {{ money(g.planned) }}</span>

@@ -332,7 +332,7 @@ public static class BudgetEngine
             lines.Add(new PoolLine(e.Date, -over, "EnvelopeOver", $"{cat.Name}超過月額度", e.Id, null));
         }
         return new EntryView(e.Id, e.Date, cat.CategoryId, cat.Name, null, null, e.InputMode, e.InputAmount,
-            actual, 0, actual, e.UsePool, 0, 0, 0, 0, envelopeOver, e.Note, e.IsSubscription, e.CreatedAt, 0, 0, e.JarCovered, e.JarId, e.SubItem);
+            actual, 0, actual, e.UsePool, 0, 0, 0, 0, envelopeOver, e.Note, e.IsSubscription, e.CreatedAt, 0, 0, e.JarCovered, e.JarId, e.SubItem, e.Currency, e.ForeignAmount);
     }
 
     private static EntryView ApplyDaily(
@@ -402,7 +402,7 @@ public static class BudgetEngine
 
         return new EntryView(e.Id, e.Date, cat.CategoryId, cat.Name, e.SlotId, slotName, e.InputMode, e.InputAmount,
             actual, planned, diff, e.UsePool, fromPool, spread, spreadSlots, unabsorbed, 0, e.Note, e.IsSubscription, e.CreatedAt,
-            spreadDays, spreadDays > 0 ? Math.Round(spread / spreadDays, 0) : 0, e.JarCovered, e.JarId, e.SubItem);
+            spreadDays, spreadDays > 0 ? Math.Round(spread / spreadDays, 0) : 0, e.JarCovered, e.JarId, e.SubItem, e.Currency, e.ForeignAmount);
     }
 
     /// <summary>

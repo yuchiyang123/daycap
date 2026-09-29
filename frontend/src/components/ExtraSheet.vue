@@ -4,8 +4,8 @@ import Sheet from './Sheet.vue'
 import ImpactPreview from './ImpactPreview.vue'
 import ShortfallPicker from './ShortfallPicker.vue'
 import SplitField from './SplitField.vue'
-import type { ShortfallChoice, JarView, SplitRequest } from '../api/types'
-import { createEntry, getAccounts, getJars } from '../api/endpoints'
+import type { ShortfallChoice, JarView, SplitRequest, TripView } from '../api/types'
+import { createEntry, getAccounts, getJars, getTrips } from '../api/endpoints'
 import type { AccountView } from '../api/types'
 import { onMounted } from 'vue'
 import type { BillingCycle, CreateEntryRequest } from '../api/types'
@@ -48,7 +48,34 @@ const subCapHint = computed(() => subSuggestions.value.find((x) => x.name === su
 onMounted(async () => {
   payAccounts.value = (await getAccounts().catch(() => ({ accounts: [] as AccountView[] }))).accounts
   jars.value = (await getJars().catch(() => [] as JarView[])).filter((j) => !j.closed && j.balance > 0)
+  // 旅遊中（§17）：預設從旅遊預算付，外幣帶旅遊設定的幣別和匯率
+  const trip = (await getTrips().catch(() => [] as TripView[])).find((t) => t.status === 'active' && !t.jarClosed)
+  if (trip) {
+    activeTrip.value = trip
+    if (jars.value.some((j) => j.id === trip.jarId)) jarId.value = trip.jarId
+    if (trip.currency) {
+      foreignOn.value = true
+      currency.value = trip.currency
+      fxRate.value = trip.fxRate ? String(trip.fxRate) : ''
+    }
+  }
 })
+
+// ---- 外幣（§17）：匯率自己填，採用這一刻的值 ----
+const activeTrip = ref<TripView | null>(null)
+const foreignOn = ref(false)
+const currency = ref('')
+const foreignAmount = ref('')
+const fxRate = ref('')
+const converted = computed(() => {
+  const a = Number(foreignAmount.value)
+  const r = Number(fxRate.value)
+  return a > 0 && r > 0 ? Math.round(a * r) : null
+})
+watch(converted, (v) => {
+  if (foreignOn.value && v !== null) amount.value = String(v)
+})
+const timeZoneId = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 watch(note, (v, old) => {
   if (!subName.value || subName.value === old) subName.value = v
@@ -72,6 +99,10 @@ const request = computed<CreateEntryRequest | null>(() => {
     subscription: null,
     jarId: jarId.value,
     subItem: subItem.value.trim() || null,
+    ...(foreignOn.value && converted.value !== null
+      ? { currency: currency.value.trim().toUpperCase(), foreignAmount: Number(foreignAmount.value), fxRate: Number(fxRate.value) }
+      : {}),
+    timeZoneId,
   }
 })
 
@@ -148,6 +179,17 @@ async function submit() {
           </select>
         </label>
       </div>
+
+      <label class="check">
+        <input v-model="foreignOn" type="checkbox" />
+        <span>外幣<span class="hint">{{ activeTrip ? `旅遊中：${activeTrip.name}` : '用當下的匯率換成台幣記帳' }}</span></span>
+      </label>
+      <div v-if="foreignOn" class="fx">
+        <label class="field">幣別<input v-model="currency" class="input" maxlength="3" placeholder="JPY" /></label>
+        <label class="field">外幣金額<input v-model="foreignAmount" class="input num" inputmode="decimal" /></label>
+        <label class="field">匯率<input v-model="fxRate" class="input num" inputmode="decimal" placeholder="1 外幣 = ? 台幣" /></label>
+      </div>
+      <p v-if="foreignOn && converted !== null" class="muted small num">＝ 台幣 {{ money(converted) }}</p>
 
       <label class="field">
         細項（選填）
@@ -249,5 +291,13 @@ async function submit() {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+.fx {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.fx .input {
+  min-width: 0;
 }
 </style>

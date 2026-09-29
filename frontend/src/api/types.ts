@@ -276,6 +276,8 @@ export interface DayView {
   net: number
   slots: SlotView[]
   extraEntryIds: number[]
+  /** 旅遊中（§17）：這天的每日時段暫停 */
+  trip?: string | null
 }
 
 export interface EntryView {
@@ -306,6 +308,8 @@ export interface EntryView {
   jarCovered?: number
   jarId?: number | null
   subItem?: string | null
+  currency?: string | null
+  foreignAmount?: number | null
 }
 
 export type ShortfallChoice = 'Pool' | 'NextPeriod' | 'Split' | 'Savings'
@@ -428,6 +432,12 @@ export interface CreateEntryRequest {
   subItem?: string | null
   /** 分帳（§14） */
   split?: SplitRequest | null
+  /** 外幣（§17）：有填就用「原金額 × 匯率」換成台幣 */
+  currency?: string | null
+  foreignAmount?: number | null
+  fxRate?: number | null
+  /** 發生當地的時區，例如 Asia/Tokyo */
+  timeZoneId?: string | null
 }
 
 export interface EntryPreview {
@@ -682,4 +692,35 @@ export interface InstallmentView {
   costTotal: number
   schedule: { index: number; dueDate: string; payment: number; principal: number; interest: number; fee: number; balanceAfter: number }[]
   prepayments: { id: number; date: string; amount: number; mode: PrepayMode; accountId: number | null }[]
+}
+
+// ---- 旅遊（§17）與收入中斷（§18）----
+export interface TripView {
+  id: number
+  name: string
+  startDate: string
+  endDate: string
+  budget: number
+  currency: string | null
+  fxRate: number | null
+  jarId: number
+  remaining: number
+  jarClosed: boolean
+  status: 'upcoming' | 'active' | 'ended'
+}
+export interface CreateTripRequest {
+  name: string
+  startDate: string
+  endDate: string
+  budget: number
+  currency: string | null
+  fxRate: number | null
+}
+export interface RunwayView {
+  usableAssets: number
+  avgDailySpend: number
+  basisDays: number
+  from: string
+  to: string
+  runwayDays: number | null
 }

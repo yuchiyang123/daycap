@@ -142,6 +142,10 @@ public class PeriodService(
         }
         var installmentCharges = await InstallmentMath.ChargesAsync(db, period.UserId, period.StartDate, period.EndDate, ct);
         var plan = PlanBuilder.Build(period.StartDate, period.EndDate, timeline, days, previousIncome, installmentCharges);
+        // 旅遊（§17）：那幾天的每日時段暫停，額度回池子
+        var trips = (await TripMath.LoadAsync(db, period.UserId, ct))
+            .Where(t => t.StartDate <= period.EndDate && t.EndDate >= period.StartDate).ToList();
+        TripMath.Apply(plan, trips, period.StartDate, period.EndDate);
         // 從前面期間結轉過來的（月結、延後的超支，§10.2、§12.2）
         var carryovers = (await db.PeriodCarryovers.AsNoTracking()
                 .Where(c => c.UserId == period.UserId && c.TargetDate >= period.StartDate && c.TargetDate <= period.EndDate)
@@ -155,7 +159,7 @@ public class PeriodService(
         // 類別細項（§13）用這期「目前」有效的設定；只是彙總回報上的標記，不影響重播
         var subItemDoc = timeline.For(today < period.StartDate ? period.StartDate : today > period.EndDate ? period.EndDate : today).Doc;
         PeriodView Run(IReadOnlyList<ReconDiff> diffs) =>
-            SubItems.Decorate(BudgetEngine.Compute(period, plan, today, utc => clock.LogicalDate(utc, dayStart), days, diffs), subItemDoc);
+            TripMath.Decorate(SubItems.Decorate(BudgetEngine.Compute(period, plan, today, utc => clock.LogicalDate(utc, dayStart), days, diffs), subItemDoc), trips);
 
         var recons = (await db.Reconciliations.AsNoTracking().Include(r => r.Lines).Where(r => r.UserId == period.UserId).ToListAsync(ct)).Active();
         if (extraRecon is not null) recons.Add(extraRecon);
@@ -248,15 +252,22 @@ public class PeriodService(
         return total;
     }
 
-    /// <summary>某一天已知的收支：發薪那天收入 −（時段實際或照預算）− 額外花費 − 當天到期的固定支出。</summary>
-    public static decimal DayFlow(PeriodView view, DateOnly d)
+    /// <summary>某一天的花費：時段實際（沒回報＝照預算）＋額外花費（含罐子付的）＋當天到期的固定支出。</summary>
+    public static decimal DayOutflow(PeriodView view, DateOnly d)
     {
         var day = view.Days.FirstOrDefault(x => x.Date == d);
         if (day is null) return 0;
         var entries = view.Entries.ToDictionary(e => e.Id);
-        var outflow = day.Slots.Sum(s => s.Actual ?? s.Planned)
-                      + day.ExtraEntryIds.Where(entries.ContainsKey).Sum(id => entries[id].Actual + entries[id].JarCovered) // 罐子付的錢也真的從帳戶出去了
-                      + view.FixedCharges.Where(f => (f.DueDate ?? view.StartDate) == d).Sum(f => f.Amount);
+        return day.Slots.Sum(s => s.Actual ?? s.Planned)
+               + day.ExtraEntryIds.Where(entries.ContainsKey).Sum(id => entries[id].Actual + entries[id].JarCovered) // 罐子付的錢也真的從帳戶出去了
+               + view.FixedCharges.Where(f => (f.DueDate ?? view.StartDate) == d).Sum(f => f.Amount);
+    }
+
+    /// <summary>某一天已知的收支：發薪那天收入 −（時段實際或照預算）− 額外花費 − 當天到期的固定支出。</summary>
+    public static decimal DayFlow(PeriodView view, DateOnly d)
+    {
+        if (view.Days.All(x => x.Date != d)) return 0;
+        var outflow = DayOutflow(view, d);
         var inflow = d == view.StartDate ? view.Income : 0;
         return inflow - outflow;
     }

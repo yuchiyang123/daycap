@@ -71,7 +71,9 @@ public record DayView(
     decimal Planned,
     decimal Net,
     List<SlotView> Slots,
-    List<int> ExtraEntryIds);
+    List<int> ExtraEntryIds,
+    // 旅遊中（§17）：這天的每日時段暫停
+    string? Trip = null);
 
 public record SlotView(
     int CategoryId,
@@ -110,7 +112,10 @@ public record EntryView(
     // 從罐子付的部分（§11.2），不算進預算
     decimal JarCovered = 0,
     int? JarId = null,
-    string? SubItem = null);
+    string? SubItem = null,
+    // 外幣（§17）
+    string? Currency = null,
+    decimal? ForeignAmount = null);
 
 public record FixedChargeView(int? FixedItemId, int CategoryId, string Name, decimal Amount, DateOnly? DueDate, bool IsSubscription);
 
@@ -138,7 +143,13 @@ public record CreateEntryRequest(
     // 類別細項（§13）
     string? SubItem = null,
     // 分帳（§14）
-    SplitRequest? Split = null);
+    SplitRequest? Split = null,
+    // 外幣（§17）：有填就用「原金額 × 匯率」換算成台幣，Amount 忽略
+    string? Currency = null,
+    decimal? ForeignAmount = null,
+    decimal? FxRate = null,
+    // 發生當地的時區（§3.3、§17），例如 Asia/Tokyo；只記錄
+    string? TimeZoneId = null);
 
 /// <summary>回報時順便把它登記成訂閱：下個週期起變成固定支出。</summary>
 public record SubscriptionRequest(string Name, int TargetCategoryId, BillingCycle Cycle, int? DueDay);

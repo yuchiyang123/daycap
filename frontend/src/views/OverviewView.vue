@@ -7,6 +7,8 @@ import { addTransfer, deleteTransfer, setNextPayday } from '../api/endpoints'
 import IncomeSheet from '../components/IncomeSheet.vue'
 import AllocateSheet from '../components/AllocateSheet.vue'
 import JarsPanel from '../components/JarsPanel.vue'
+import TripsPanel from '../components/TripsPanel.vue'
+import IncomeGapPanel from '../components/IncomeGapPanel.vue'
 import { store, setPeriod } from '../lib/store'
 import type { SubItemView } from '../api/types'
 import { groupLabel, modeLabel, money, parseDate, pct, shortDate, signed, toIso } from '../lib/format'
@@ -237,6 +239,16 @@ async function savePayday() {
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">旅遊<span class="aside">暫時接管每日時段，回來後恢復</span></h2>
+      <TripsPanel />
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">收入中斷<span class="aside">失業、無薪假、接案空窗</span></h2>
+      <IncomeGapPanel />
     </section>
 
     <section class="section">
