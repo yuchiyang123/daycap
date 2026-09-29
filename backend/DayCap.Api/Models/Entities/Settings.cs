@@ -53,6 +53,13 @@ public class UserProfile
 
     public string? TemplateSnapshot { get; set; }
 
+    /// <summary>每晚通知（§9.4）：要不要發、幾點（台北時間 HH:mm）、最後一次發的日期（一天最多一則）。</summary>
+    public bool PushEnabled { get; set; } = true;
+
+    public string PushTime { get; set; } = "21:30";
+
+    public DateOnly? LastPushOn { get; set; }
+
     // ---- 舊欄位（已不使用）：改存在設定版本裡，保留給舊資料匯入 ----
     public int MonthlyIncome { get; set; }
 

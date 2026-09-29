@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import MealTable from '../components/MealTable.vue'
+import PushSettings from '../components/PushSettings.vue'
 import { watch } from 'vue'
 import { estimateSettings } from '../api/endpoints'
 import type { PercentBase, SettingsEstimate } from '../api/types'
@@ -591,6 +592,11 @@ async function signOut() {
           </template>
         </div>
         <p class="muted small">國定假日、補假、補班來自行政院人事行政總處的辦公日曆表。請假或颱風假可以在這裡自己改。</p>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">每晚通知</h2>
+        <PushSettings />
       </section>
 
       <section class="section">

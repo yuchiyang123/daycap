@@ -31,6 +31,8 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<Goal> Goals => Set<Goal>();
     public DbSet<AssetSnapshot> AssetSnapshots => Set<AssetSnapshot>();
     public DbSet<PriceQuote> PriceQuotes => Set<PriceQuote>();
+    public DbSet<PushEndpoint> PushEndpoints => Set<PushEndpoint>();
+    public DbSet<AppSecret> AppSecrets => Set<AppSecret>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder c)
     {
@@ -121,6 +123,12 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
             e.Property(x => x.ManualPrice).HasPrecision(18, 4);
         });
         b.Entity<Goal>().HasIndex(x => x.UserId);
+        b.Entity<PushEndpoint>(e =>
+        {
+            e.HasIndex(x => x.UserId);
+            e.HasIndex(x => x.Endpoint).IsUnique();
+        });
+        b.Entity<AppSecret>().HasKey(x => x.Key);
         b.Entity<AssetSnapshot>().HasIndex(x => new { x.UserId, x.Date }).IsUnique();
         b.Entity<PriceQuote>(e =>
         {
