@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { createDebt, deleteDebt, getAccounts, getDebts, settleDebt } from '../api/endpoints'
 import type { AccountView, DebtKind, DebtsView, DebtView } from '../api/types'
 import { money, shortDate } from '../lib/format'
@@ -18,6 +19,7 @@ const showDone = ref(false)
 async function load() {
   data.value = await getDebts().catch(() => null)
 }
+useRefreshOnReturn(load)
 onMounted(async () => {
   await load()
   accounts.value = (await getAccounts().catch(() => ({ accounts: [] as AccountView[] }))).accounts

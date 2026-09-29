@@ -11,6 +11,7 @@ import { lockState } from './lib/applock'
 import { dismissFailed, offlineState } from './lib/offline'
 
 const route = useRoute()
+const keepAlive = ['TodayView', 'MonthView', 'LedgerView', 'OverviewView', 'AssetsView', 'SettingsView']
 const isPublic = computed(() => !!route.meta.public)
 const needsPeriod = computed(() => !!route.meta.needsPeriod)
 
@@ -69,7 +70,12 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
       <div v-else-if="needsPeriod && !store.period" class="page">
         <p class="muted">載入中</p>
       </div>
-      <RouterView v-else :key="store.period?.id" />
+      <!-- 主要分頁留在記憶體：切回來立刻顯示上次的畫面，資料在背景更新（每個請求經過 Tunnel 約 1 秒） -->
+      <RouterView v-else v-slot="{ Component, route: r }">
+        <KeepAlive :include="keepAlive" :max="6">
+          <component :is="Component" :key="r.meta.needsPeriod ? `${r.path}-${store.period?.id ?? 0}` : r.path" />
+        </KeepAlive>
+      </RouterView>
     </main>
 
     <NotificationPopup />

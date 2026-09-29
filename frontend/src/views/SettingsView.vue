@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onActivated, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import MealTable from '../components/MealTable.vue'
 import PushSettings from '../components/PushSettings.vue'
@@ -38,12 +38,27 @@ function applyView(v: { settings: SettingsDto; effectiveFrom: string; today: str
   savedStart.value = v.settings.startDate
 }
 
+// 設定和行事曆同時抓（以前一個接一個，要等兩趟）
 onMounted(async () => {
   try {
-    applyView(await getSettings())
-    await loadCalendar()
+    const [view] = await Promise.all([getSettings(), loadCalendar()])
+    applyView(view)
   } catch (e) {
     error.value = (e as Error).message
+  }
+})
+// 從別頁切回來：沒有在編輯的話背景更新；正在改的草稿保留
+let firstActivation = true
+onActivated(async () => {
+  if (firstActivation) {
+    firstActivation = false
+    return
+  }
+  if (dirty.value) return
+  try {
+    applyView(await getSettings())
+  } catch {
+    /* 背景更新失敗就先顯示原本的 */
   }
 })
 

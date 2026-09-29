@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { addIncomeAdjustment, addTransfer, getRunway } from '../api/endpoints'
 import type { RunwayView } from '../api/types'
 import { setPeriod, store } from '../lib/store'
@@ -19,6 +20,7 @@ const topUp = ref('')
 onMounted(async () => {
   runway.value = await getRunway().catch(() => null)
 })
+useRefreshOnReturn(async () => (runway.value = await getRunway()))
 
 const alreadyZero = computed(() => period.value.income <= 0)
 

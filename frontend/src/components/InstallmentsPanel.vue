@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { createInstallment, deleteInstallment, getAccounts, getInstallments, getSettings, prepayInstallment, previewInstallment } from '../api/endpoints'
 import type { AccountView, CategoryDto, CreateInstallmentRequest, InstallmentMode, InstallmentView, PrepayMode } from '../api/types'
 import { loadCurrentPeriod } from '../lib/store'
@@ -16,6 +17,7 @@ const accounts = ref<AccountView[]>([])
 const error = ref<string | null>(null)
 const busy = ref(false)
 const expanded = ref<number | null>(null)
+useRefreshOnReturn(async () => (items.value = await getInstallments()))
 
 onMounted(async () => {
   items.value = await getInstallments().catch(() => [])

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { createTrip, endTrip, getTrips } from '../api/endpoints'
 import type { TripView } from '../api/types'
 import { loadCurrentPeriod, store } from '../lib/store'
@@ -16,6 +17,7 @@ const busy = ref(false)
 onMounted(async () => {
   trips.value = await getTrips().catch(() => [])
 })
+useRefreshOnReturn(async () => (trips.value = await getTrips()))
 const shown = computed(() => trips.value.filter((t) => t.status !== 'ended' || !t.jarClosed).slice(0, 5))
 const statusLabel: Record<string, string> = { upcoming: '還沒出發', active: '旅遊中', ended: '已回國' }
 

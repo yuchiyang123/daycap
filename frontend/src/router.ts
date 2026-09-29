@@ -1,20 +1,36 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { checkAuth, loadCurrentPeriod, loadNotifications, store } from './lib/store'
 
+// 每一頁的程式分開載入；經過 Cloudflare Tunnel 每個請求約 1 秒，第一次切到某頁會卡在下載。
+// app 開好後趁空閒先全部預載（service worker 也會快取起來），切頁就不用等。
+const views = {
+  today: () => import('./views/TodayView.vue'),
+  month: () => import('./views/MonthView.vue'),
+  ledger: () => import('./views/LedgerView.vue'),
+  overview: () => import('./views/OverviewView.vue'),
+  assets: () => import('./views/AssetsView.vue'),
+  settings: () => import('./views/SettingsView.vue'),
+  monthEnd: () => import('./views/MonthEndView.vue'),
+}
+
+export function prefetchViews() {
+  for (const load of Object.values(views)) void load().catch(() => undefined)
+}
+
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
     { path: '/sso/callback', redirect: '/' },
     { path: '/welcome', component: () => import('./views/WelcomeView.vue') },
-    { path: '/', component: () => import('./views/TodayView.vue'), meta: { needsPeriod: true } },
-    { path: '/month', component: () => import('./views/MonthView.vue'), meta: { needsPeriod: true } },
-    { path: '/ledger', component: () => import('./views/LedgerView.vue'), meta: { needsPeriod: true } },
-    { path: '/overview', component: () => import('./views/OverviewView.vue'), meta: { needsPeriod: true } },
-    { path: '/month-end/:periodId', component: () => import('./views/MonthEndView.vue') },
-    { path: '/assets', component: () => import('./views/AssetsView.vue') },
+    { path: '/', component: views.today, meta: { needsPeriod: true } },
+    { path: '/month', component: views.month, meta: { needsPeriod: true } },
+    { path: '/ledger', component: views.ledger, meta: { needsPeriod: true } },
+    { path: '/overview', component: views.overview, meta: { needsPeriod: true } },
+    { path: '/month-end/:periodId', component: views.monthEnd },
+    { path: '/assets', component: views.assets },
     // 設定頁沒有本期也要能用（還沒到開始日期時就是在這裡設定）
-    { path: '/settings', component: () => import('./views/SettingsView.vue'), meta: { wantsPeriod: true } },
+    { path: '/settings', component: views.settings, meta: { wantsPeriod: true } },
     { path: '/:rest(.*)*', redirect: '/' },
   ],
 })

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn'
 import { closeJar, createJar, getJars, getSettings, moveJar, updateJar } from '../api/endpoints'
 import type { FixedItemDto, JarKind, JarView } from '../api/types'
 import { loadCurrentPeriod, store } from '../lib/store'
@@ -28,6 +29,7 @@ async function load() {
   jars.value = await getJars().catch(() => [])
 }
 onMounted(load)
+useRefreshOnReturn(load)
 
 async function run(fn: () => Promise<JarView[]>) {
   busy.value = true

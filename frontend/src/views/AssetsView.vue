@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onActivated, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import LineChart, { type Series } from '../charts/LineChart.vue'
 import Meter from '../charts/Meter.vue'
@@ -33,6 +33,12 @@ async function load(refresh = false) {
   }
 }
 onMounted(() => load())
+// 從別頁切回來：先顯示上次的資料，背景再抓一次（分帳、分期、對帳都會改到這頁）
+let firstActivation = true
+onActivated(() => {
+  if (firstActivation) firstActivation = false
+  else void load()
+})
 
 async function refreshQuotes() {
   refreshing.value = true
