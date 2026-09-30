@@ -1,24 +1,24 @@
 /*
-  DayCap 設計系統（風格：minimal）
-  極簡大數字：留白多、字大、幾乎沒有框線，用底色區塊分區；一個藍色強調。
+  DayCap 設計系統（風格：ledger）
+  記帳本：暖色紙張、細線分隔、數字與標題用襯線字；強調色是磚紅，用得很少。
   一律平面：不用漸層、陰影、發光、emoji 或圖示字元。
   顏色變數與檔案結尾的「設計層」由 design.py 產生；圖表配色沿用 dataviz 參考色盤。
 */
 :root {
   color-scheme: light;
-  --page: #f3f4f6;
-  --surface: #ffffff;
-  --sunk: #e9ebef;
-  --ink: #0f1216;
-  --ink-2: #414855;
-  --muted: #6c7482;
-  --line: #e6e8ec;
-  --line-2: #cfd4db;
-  --accent: #1f6feb;
-  --accent-soft: #e1ecff;
-  --on-accent: #ffffff;
-  --good-text: #0a7a2f;
-  --bad-text: #c4321f;
+  --page: #f4eee2;
+  --surface: #faf6ec;
+  --sunk: #ebe3d3;
+  --ink: #25201a;
+  --ink-2: #574e42;
+  --muted: #857a6b;
+  --line: #ddd3c0;
+  --line-2: #b9ad97;
+  --accent: #a3361f;
+  --accent-soft: #f1dfd6;
+  --on-accent: #fff8f0;
+  --good-text: #2f6b2a;
+  --bad-text: #a3261a;
   --warn-text: #8a5a00;
   --series-1: #2a78d6;
   --series-2: #eb6834;
@@ -34,38 +34,44 @@
   --st-warn: #fab219;
   --st-serious: #ec835a;
   --st-crit: #d03b3b;
-  --mid: #e9ebef;
-  --grid: #e6e8ec;
-  --axis: #cfd4db;
-  --track: #e9ebef;
+  --mid: #ebe3d3;
+  --grid: #ddd3c0;
+  --axis: #b9ad97;
+  --track: #ebe3d3;
 
   --sans: 'Noto Sans TC', system-ui, -apple-system, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
   --gutter: 16px;
   --nav-h: 58px;
-  --radius: 16px;
-  --btn-radius: 12px;
-  --panel-bg: var(--surface);
+  --radius: 2px;
+  --btn-radius: 2px;
+  --panel-bg: transparent;
   --panel-border: 0;
-  --hero-size: 76px;
+  --num-font: 'Times New Roman', Times, 'Songti TC', 'Noto Serif TC', 'PMingLiU', serif;
+  --hero-size: 72px;
+  --hero-pad: 18px 0 16px;
+  --hero-rule-top: 3px double var(--ink);
+  --hero-rule-bottom: 1px solid var(--ink);
+  --hero-fill: var(--ink);
+  --stat-gap: 0px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --page: #15181d;
-    --surface: #20242b;
-    --sunk: #2b3039;
-    --ink: #f6f8fb;
-    --ink-2: #c9cfd9;
-    --muted: #929aa8;
-    --line: #2d323b;
-    --line-2: #414855;
-    --accent: #5aa2ff;
-    --accent-soft: #1d3150;
-    --on-accent: #08111f;
-    --good-text: #4ecb6c;
-    --bad-text: #ff8370;
-    --warn-text: #e6b35a;
+    --page: #1b1916;
+    --surface: #23201c;
+    --sunk: #2e2a24;
+    --ink: #f3ece0;
+    --ink-2: #cdc3b3;
+    --muted: #9a8f7f;
+    --line: #38332c;
+    --line-2: #524a3f;
+    --accent: #e79478;
+    --accent-soft: #3a261f;
+    --on-accent: #1f0f09;
+    --good-text: #8cc084;
+    --bad-text: #f08a78;
+    --warn-text: #e0b064;
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -76,28 +82,28 @@
     --series-8: #e66767;
     --pos: #3987e5;
     --neg: #e66767;
-    --mid: #2b3039;
-    --grid: #2d323b;
-    --axis: #414855;
-    --track: #2b3039;
+    --mid: #2e2a24;
+    --grid: #38332c;
+    --axis: #524a3f;
+    --track: #2e2a24;
   }
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --page: #15181d;
-  --surface: #20242b;
-  --sunk: #2b3039;
-  --ink: #f6f8fb;
-  --ink-2: #c9cfd9;
-  --muted: #929aa8;
-  --line: #2d323b;
-  --line-2: #414855;
-  --accent: #5aa2ff;
-  --accent-soft: #1d3150;
-  --on-accent: #08111f;
-  --good-text: #4ecb6c;
-  --bad-text: #ff8370;
-  --warn-text: #e6b35a;
+  --page: #1b1916;
+  --surface: #23201c;
+  --sunk: #2e2a24;
+  --ink: #f3ece0;
+  --ink-2: #cdc3b3;
+  --muted: #9a8f7f;
+  --line: #38332c;
+  --line-2: #524a3f;
+  --accent: #e79478;
+  --accent-soft: #3a261f;
+  --on-accent: #1f0f09;
+  --good-text: #8cc084;
+  --bad-text: #f08a78;
+  --warn-text: #e0b064;
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -108,10 +114,10 @@
   --series-8: #e66767;
   --pos: #3987e5;
   --neg: #e66767;
-  --mid: #2b3039;
-  --grid: #2d323b;
-  --axis: #414855;
-  --track: #2b3039;
+  --mid: #2e2a24;
+  --grid: #38332c;
+  --axis: #524a3f;
+  --track: #2e2a24;
 }
 
 *,
@@ -629,25 +635,27 @@ input.input::-webkit-outer-spin-button {
 /* ==== 設計層（design.py 產生，不要手改）==== */
 section[id] { scroll-margin-top: 64px; }
 body { font-size: 16px; }
-.page { gap: 28px; padding-top: 24px; }
-.page-head h1 { font-size: 30px; letter-spacing: 0; }
+.page { gap: 26px; padding-top: 22px; }
+.page-head h1 { font-family: var(--num-font); font-size: 32px; letter-spacing: 0.04em; }
 .page-head .sub { font-size: 14px; }
-.section { gap: 12px; }
-.section-title { font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: 0; }
-.section-title .aside { font-size: 13px; }
-.panel { border: 0; }
-.tiles { border: 0; gap: 2px; background: transparent; }
-.hero { font-size: 56px; font-weight: 700; }
-.btn { min-height: 44px; border-radius: var(--btn-radius); border-color: transparent; background: var(--sunk); font-weight: 600; font-size: 15px; }
-.btn:hover { border-color: transparent; filter: brightness(0.97); }
-.btn.primary { background: var(--accent); color: var(--on-accent); }
-.btn.quiet { background: transparent; }
-.btn.sm { min-height: 36px; border-radius: 10px; font-size: 14px; }
-.input, .select { min-height: 46px; border-radius: 12px; border-color: transparent; background-color: var(--sunk); }
-.input.compact, .select.compact { min-height: 38px; border-radius: 10px; }
-.tag { border-radius: 6px; }
-header.topbar { border-bottom: 0; }
-nav.tabbar { border-top: 0; }
+.section-title { font-family: var(--num-font); font-size: 18px; font-weight: 700; color: var(--ink); letter-spacing: 0.04em; border-bottom: 1px solid var(--ink); padding-bottom: 6px; }
+.section-title .aside { font-family: var(--sans); font-size: 13px; }
+.panel { background: transparent; border: 0; border-bottom: 1px solid var(--line-2); border-radius: 0; }
+.tiles { border: 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); border-radius: 0; background: var(--line); }
+.tile { background: var(--page); }
+.tile .value, .hero { font-family: var(--num-font); }
+.hero { font-size: 56px; }
+.btn { min-height: 44px; border-radius: 2px; border: 1px solid var(--ink); background: transparent; font-weight: 600; font-size: 15px; }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--page); }
+.btn.quiet { border-color: transparent; }
+.btn.sm { min-height: 36px; font-size: 14px; }
+.input, .select { min-height: 44px; border-radius: 0; border: 0; border-bottom: 1px solid var(--line-2); background-color: transparent; padding-left: 2px; }
+.input:focus, .select:focus { border-color: var(--accent); }
+.input.compact, .select.compact { min-height: 36px; }
+.tag { border-radius: 0; background: transparent; border: 1px solid var(--line-2); }
+header.topbar { border-bottom: 1px solid var(--ink); }
+header.topbar .brand { font-family: var(--num-font); }
+nav.tabbar { background: var(--page); border-top: 1px solid var(--ink); }
 nav.tabbar .tab { font-size: 15px; }
-nav.tabbar .tab.router-link-exact-active { color: var(--accent); font-weight: 700; }
-nav.tabbar .tab.router-link-exact-active::before { display: none; }
+nav.tabbar .tab.router-link-exact-active { font-family: var(--num-font); font-weight: 700; }
+nav.tabbar .tab.router-link-exact-active::before { background: var(--ink); left: 22%; right: 22%; height: 3px; }
