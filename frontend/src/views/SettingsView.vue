@@ -15,7 +15,7 @@ import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, HolidayShi
 import { store, loadCurrentPeriod } from '../lib/store'
 import { dayLabel, groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
 import { applyTheme, currentTheme, type ThemeChoice } from '../lib/theme'
-import { haptic, iosTick, rememberIosMethod, type IosMethod } from '../lib/haptics'
+import { haptic } from '../lib/haptics'
 
 /**
  * 設定版本化（§4.1）：每次儲存都新增一個版本，一般從明天起生效；
@@ -342,22 +342,6 @@ const theme = ref<ThemeChoice>(currentTheme())
 // ---- 滑卡震動測試 ----
 const hapticMsg = ref<string | null>(null)
 const isIos = /iPhone|iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-const iosMethods: { v: IosMethod; label: string }[] = [
-  { v: 'label-offscreen', label: 'A. 畫面外的開關（預設）' },
-  { v: 'label-hidden', label: 'B. 隱藏的開關' },
-  { v: 'input-click', label: 'C. 直接切換開關' },
-]
-const chosen = ref<IosMethod>(((): IosMethod => {
-  try {
-    return (localStorage.getItem('daycap.haptic-method') as IosMethod) || 'label-offscreen'
-  } catch {
-    return 'label-offscreen'
-  }
-})())
-function choose(m: IosMethod) {
-  rememberIosMethod(m)
-  chosen.value = m
-}
 function testHaptic() {
   const how = haptic('confirm')
   // 新版 iOS 的 Safari 回報給網頁的版本號固定在 18，看不出真正的版本，所以不顯示版本
@@ -365,7 +349,7 @@ function testHaptic() {
     how === 'vibrate'
       ? '用 Android 震動。沒感覺的話，檢查手機的震動 / 觸覺回饋設定。'
       : isIos
-        ? 'iPhone：借用系統開關的觸覺回饋（要開「設定 → 聲音與觸覺 → 系統觸覺回饋」）。'
+        ? 'iPhone：這顆按鈕不會震，試下面的「滑卡按鈕」（要開「設定 → 聲音與觸覺 → 系統觸覺回饋」）。'
         : '這個瀏覽器不支援震動。'
 }
 function pickTheme(t: ThemeChoice) {
@@ -685,23 +669,15 @@ async function signOut() {
             <button type="button" class="btn sm" @click="testHaptic">測試震動</button>
           </div>
           <template v-if="isIos">
-            <p class="muted small">iPhone 沒有正式的網頁震動功能，下面幾種寫法逐一按按看，哪一個有震就按旁邊的「用這個」：</p>
-            <div v-for="m in iosMethods" :key="m.v" class="haptic-row">
-              <span class="small">{{ m.label }}<b v-if="chosen === m.v" class="good">・使用中</b></span>
-              <span class="btns">
-                <button type="button" class="btn sm" @click="iosTick(m.v)">試</button>
-                <button type="button" class="btn sm quiet" @click="choose(m.v)">用這個</button>
-              </span>
-            </div>
+            <p class="muted small">iPhone 只有「手指真的點到開關」才會震，所以按鈕會震、滑動不會。</p>
             <label class="haptic-row small">
-              <span>D. 直接點這個系統開關，有震嗎？</span>
+              <span>系統開關（對照用）</span>
               <input type="checkbox" switch />
             </label>
             <div class="haptic-row small">
-              <span>E. 滑卡的「照預算」按鈕用的做法，點點看有震嗎？</span>
+              <span>滑卡按鈕（照預算、修正）</span>
               <HapticButton class="sm" @press="hapticMsg = 'E 有觸發'">點我</HapticButton>
             </div>
-            <p class="muted small">如果連 D 都不會震，代表這個環境（例如從主畫面打開的 App）網頁完全拿不到觸覺回饋。</p>
           </template>
         </div>
       </section>

@@ -119,6 +119,8 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* 不能雙擊放大（也順便拿掉點擊的 300ms 延遲） */
+  touch-action: manipulation;
 }
 
 body {
