@@ -5,7 +5,6 @@ import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import MealTable from '../components/MealTable.vue'
 import PushSettings from '../components/PushSettings.vue'
 import SubItemsEditor from '../components/SubItemsEditor.vue'
-import HapticButton from '../components/HapticButton.vue'
 import TrustSettings from '../components/TrustSettings.vue'
 import { watch } from 'vue'
 import { estimateSettings } from '../api/endpoints'
@@ -15,7 +14,6 @@ import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, HolidayShi
 import { store, loadCurrentPeriod } from '../lib/store'
 import { dayLabel, groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
 import { applyTheme, currentTheme, type ThemeChoice } from '../lib/theme'
-import { haptic } from '../lib/haptics'
 
 /**
  * 設定版本化（§4.1）：每次儲存都新增一個版本，一般從明天起生效；
@@ -339,19 +337,6 @@ async function toggleDay(d: CalendarDayDto) {
 // ---- 外觀 / 帳號 ----
 const theme = ref<ThemeChoice>(currentTheme())
 
-// ---- 滑卡震動測試 ----
-const hapticMsg = ref<string | null>(null)
-const isIos = /iPhone|iPad/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-function testHaptic() {
-  const how = haptic('confirm')
-  // 新版 iOS 的 Safari 回報給網頁的版本號固定在 18，看不出真正的版本，所以不顯示版本
-  hapticMsg.value =
-    how === 'vibrate'
-      ? '用 Android 震動。沒感覺的話，檢查手機的震動 / 觸覺回饋設定。'
-      : isIos
-        ? 'iPhone：這顆按鈕不會震，試下面的「滑卡按鈕」（要開「設定 → 聲音與觸覺 → 系統觸覺回饋」）。'
-        : '這個瀏覽器不支援震動。'
-}
 function pickTheme(t: ThemeChoice) {
   theme.value = t
   applyTheme(t)
@@ -659,26 +644,6 @@ async function signOut() {
             <span class="muted">{{ store.me?.userName ?? store.me?.userId }}</span>
             <button class="btn sm" @click="signOut">登出</button>
           </div>
-        </div>
-        <div class="panel panel-pad haptic-box">
-          <div class="haptic-row">
-            <span>
-              滑卡震動
-              <span class="muted small">{{ hapticMsg ?? '按一下試試這支手機會不會震' }}</span>
-            </span>
-            <button type="button" class="btn sm" @click="testHaptic">測試震動</button>
-          </div>
-          <template v-if="isIos">
-            <p class="muted small">iPhone 只有「手指真的點到開關」才會震，所以按鈕會震、滑動不會。</p>
-            <label class="haptic-row small">
-              <span>系統開關（對照用）</span>
-              <input type="checkbox" switch />
-            </label>
-            <div class="haptic-row small">
-              <span>滑卡按鈕（照預算、修正）</span>
-              <HapticButton class="sm" @press="hapticMsg = 'E 有觸發'">點我</HapticButton>
-            </div>
-          </template>
         </div>
       </section>
     </template>
@@ -1124,25 +1089,5 @@ async function signOut() {
   .two {
     grid-template-columns: 1fr;
   }
-}
-.haptic-box {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.haptic-box .btns {
-  display: flex;
-  gap: 6px;
-}
-.haptic-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-.haptic-row .small {
-  display: block;
-  font-size: 12px;
 }
 </style>
