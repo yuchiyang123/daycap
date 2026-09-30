@@ -1,25 +1,25 @@
 /*
-  DayCap 設計系統：平面、以字為主、一個強調色。
-  不用漸層、陰影、發光、emoji 或圖示字元；層次只靠 1px 線、底色深淺與字重。
-  圖表配色沿用 dataviz 參考色盤（已驗證色盲可辨），淺色 / 深色各一組。
+  DayCap 設計系統（風格：swiss）
+  瑞士平面：黑白高對比、粗標題與粗線、紅色強調；區塊用上下粗細線分隔而不是方框。
+  一律平面：不用漸層、陰影、發光、emoji 或圖示字元。
+  顏色變數與檔案結尾的「設計層」由 design.py 產生；圖表配色沿用 dataviz 參考色盤。
 */
 :root {
   color-scheme: light;
-  --page: #f4f3ef;
-  --surface: #fcfcfb;
-  --sunk: #edece7;
-  --ink: #141412;
-  --ink-2: #52514e;
-  --muted: #7a7873;
-  --line: #e1e0d9;
-  --line-2: #c3c2b7;
-  --accent: #256abf;
-  --accent-soft: #e3edf9;
+  --page: #ffffff;
+  --surface: #ffffff;
+  --sunk: #efefef;
+  --ink: #000000;
+  --ink-2: #2e2e2e;
+  --muted: #6b6b6b;
+  --line: #d6d6d6;
+  --line-2: #9a9a9a;
+  --accent: #e10600;
+  --accent-soft: #ffe5e3;
   --on-accent: #ffffff;
-  --good-text: #006300;
-  --bad-text: #b42f2f;
+  --good-text: #0a6b1f;
+  --bad-text: #c40500;
   --warn-text: #8a5a00;
-
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -30,38 +30,38 @@
   --series-8: #e34948;
   --pos: #2a78d6;
   --neg: #e34948;
-  --mid: #f0efec;
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
   --st-good: #0ca30c;
   --st-warn: #fab219;
   --st-serious: #ec835a;
   --st-crit: #d03b3b;
-  --track: #e8e7e1;
+  --mid: #efefef;
+  --grid: #d6d6d6;
+  --axis: #9a9a9a;
+  --track: #efefef;
 
   --sans: 'Noto Sans TC', system-ui, -apple-system, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
-  --radius: 6px;
   --gutter: 16px;
-  --nav-h: 56px;
+  --nav-h: 58px;
+  --radius: 0px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --sunk: #232321;
+    --page: #000000;
+    --surface: #000000;
+    --sunk: #1c1c1c;
     --ink: #ffffff;
-    --ink-2: #c3c2b7;
-    --muted: #8f8d87;
-    --line: #2c2c2a;
-    --line-2: #3d3d3a;
-    --accent: #3987e5;
-    --accent-soft: #1a2940;
-    --on-accent: #ffffff;
-    --good-text: #3fbf3f;
-    --bad-text: #ee7466;
-    --warn-text: #e0a64a;
+    --ink-2: #d4d4d4;
+    --muted: #8f8f8f;
+    --line: #2e2e2e;
+    --line-2: #6a6a6a;
+    --accent: #ff453a;
+    --accent-soft: #3a0f0c;
+    --on-accent: #000000;
+    --good-text: #4cd964;
+    --bad-text: #ff6b61;
+    --warn-text: #ffcc00;
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -72,28 +72,28 @@
     --series-8: #e66767;
     --pos: #3987e5;
     --neg: #e66767;
-    --mid: #383835;
-    --grid: #2c2c2a;
-    --axis: #383835;
-    --track: #2a2a28;
+    --mid: #1c1c1c;
+    --grid: #2e2e2e;
+    --axis: #6a6a6a;
+    --track: #1c1c1c;
   }
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --page: #0d0d0d;
-  --surface: #1a1a19;
-  --sunk: #232321;
+  --page: #000000;
+  --surface: #000000;
+  --sunk: #1c1c1c;
   --ink: #ffffff;
-  --ink-2: #c3c2b7;
-  --muted: #8f8d87;
-  --line: #2c2c2a;
-  --line-2: #3d3d3a;
-  --accent: #3987e5;
-  --accent-soft: #1a2940;
-  --on-accent: #ffffff;
-  --good-text: #3fbf3f;
-  --bad-text: #ee7466;
-  --warn-text: #e0a64a;
+  --ink-2: #d4d4d4;
+  --muted: #8f8f8f;
+  --line: #2e2e2e;
+  --line-2: #6a6a6a;
+  --accent: #ff453a;
+  --accent-soft: #3a0f0c;
+  --on-accent: #000000;
+  --good-text: #4cd964;
+  --bad-text: #ff6b61;
+  --warn-text: #ffcc00;
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -104,10 +104,10 @@
   --series-8: #e66767;
   --pos: #3987e5;
   --neg: #e66767;
-  --mid: #383835;
-  --grid: #2c2c2a;
-  --axis: #383835;
-  --track: #2a2a28;
+  --mid: #1c1c1c;
+  --grid: #2e2e2e;
+  --axis: #6a6a6a;
+  --track: #1c1c1c;
 }
 
 *,
@@ -621,3 +621,32 @@ input.input::-webkit-outer-spin-button {
   background: var(--surface);
   padding: 8px 12px;
 }
+
+/* ==== 設計層（design.py 產生，不要手改）==== */
+section[id] { scroll-margin-top: 64px; }
+body { font-size: 16px; }
+.page { gap: 34px; padding-top: 26px; }
+.page-head h1 { font-size: 42px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; }
+.page-head .sub { font-size: 14px; margin-top: 6px; }
+.section { gap: 0; }
+.section-title { font-size: 14px; font-weight: 800; color: var(--ink); letter-spacing: 0.08em; border-top: 4px solid var(--ink); padding: 8px 0 10px; }
+.panel { background: transparent; border: 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.hero { font-size: 76px; font-weight: 900; letter-spacing: -0.04em; }
+.hero-unit { font-weight: 800; color: var(--ink); }
+.tiles { border: 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); background: var(--ink); }
+.tile { background: var(--page); }
+.tile .value { font-size: 24px; font-weight: 800; }
+.btn { border-radius: 0; border: 2px solid var(--ink); background: transparent; font-weight: 800; min-height: 44px; }
+.btn:hover { border-color: var(--ink); background: var(--sunk); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.quiet { border-color: transparent; }
+.btn.sm { min-height: 34px; }
+.input, .select { border-radius: 0; border: 0; border-bottom: 2px solid var(--ink); background-color: transparent; padding-left: 2px; min-height: 44px; }
+.input:focus, .select:focus { border-color: var(--accent); }
+.tag { border-radius: 0; background: var(--ink); color: var(--page); }
+.tag.accent { background: var(--accent); color: var(--on-accent); }
+header.topbar { border-bottom: 4px solid var(--ink); }
+header.topbar .brand { font-weight: 900; letter-spacing: 0.06em; }
+nav.tabbar { border-top: 4px solid var(--ink); background: var(--page); }
+nav.tabbar .tab.router-link-exact-active { font-weight: 900; color: var(--accent); }
+nav.tabbar .tab.router-link-exact-active::before { display: none; }
