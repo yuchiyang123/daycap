@@ -13,7 +13,7 @@ import { deleteBeforeStart, getCalendar, getSettings, saveSettings, setDayOverri
 import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, HolidayShift, SettingsDto, SettingsVersionSummary } from '../api/types'
 import { store, loadCurrentPeriod } from '../lib/store'
 import { dayLabel, groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
-import { applyTheme, currentTheme, type ThemeChoice } from '../lib/theme'
+import { applyDesign, applyTheme, currentDesign, currentTheme, designs, type DesignChoice, type ThemeChoice } from '../lib/theme'
 
 /**
  * 設定版本化（§4.1）：每次儲存都新增一個版本，一般從明天起生效；
@@ -341,6 +341,11 @@ function pickTheme(t: ThemeChoice) {
   theme.value = t
   applyTheme(t)
 }
+// 風格（整套外觀）：存在這台裝置，預設是原本的
+const design = ref<DesignChoice>(currentDesign())
+function pickDesign() {
+  applyDesign(design.value)
+}
 async function signOut() {
   await logout()
   window.location.href = '/login'
@@ -644,6 +649,15 @@ async function signOut() {
             <span class="muted">{{ store.me?.userName ?? store.me?.userId }}</span>
             <button class="btn sm" @click="signOut">登出</button>
           </div>
+        </div>
+        <div class="panel panel-pad">
+          <label class="field design-field">
+            風格 Theme
+            <select v-model="design" class="select" @change="pickDesign">
+              <option v-for="d in designs" :key="d.v" :value="d.v">{{ d.label }}</option>
+            </select>
+            <span class="hint">整套外觀；只存在這台裝置，淺色 / 深色照上面的選擇</span>
+          </label>
         </div>
       </section>
     </template>
@@ -960,6 +974,9 @@ async function signOut() {
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
+}
+.design-field {
+  max-width: 320px;
 }
 .who {
   display: flex;

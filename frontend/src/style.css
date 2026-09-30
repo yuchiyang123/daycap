@@ -621,3 +621,261 @@ input.input::-webkit-outer-spin-button {
   background: var(--surface);
   padding: 8px 12px;
 }
+
+/* ==== 可切換的風格（設定 → 外觀 → 風格）。沒有 data-design 就是上面原本的樣式 ==== */
+/* ---- 終端機（mono）：終端機：等寬數字、直角細框、綠色強調；版面和原本一樣，層次靠字級和顏色。 ---- */
+:root[data-design='mono'] {
+  color-scheme: light;
+  --page: #f3f6f1;
+  --surface: #fbfcfa;
+  --sunk: #e7ece5;
+  --ink: #0f1a13;
+  --ink-2: #3e4d43;
+  --muted: #6c7b70;
+  --line: #d9e1d8;
+  --line-2: #b7c3b8;
+  --accent: #0b7a43;
+  --accent-soft: #dcf1e4;
+  --on-accent: #ffffff;
+  --good-text: #0b7a43;
+  --bad-text: #b3261e;
+  --warn-text: #8a5a00;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+  --pos: #2a78d6;
+  --neg: #e34948;
+  --st-good: #0ca30c;
+  --st-warn: #fab219;
+  --st-serious: #ec835a;
+  --st-crit: #d03b3b;
+  --mid: #e7ece5;
+  --grid: #d9e1d8;
+  --axis: #b7c3b8;
+  --track: #e7ece5;
+  --radius: 0px;
+  --num-font: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Roboto Mono', monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-design='mono']:not([data-theme='light']) {
+    color-scheme: dark;
+    --page: #0a0d0b;
+    --surface: #111712;
+    --sunk: #19221b;
+    --ink: #e9f2eb;
+    --ink-2: #b6c6ba;
+    --muted: #7f9184;
+    --line: #202b23;
+    --line-2: #334538;
+    --accent: #3ddc84;
+    --accent-soft: #11331f;
+    --on-accent: #04130a;
+    --good-text: #3ddc84;
+    --bad-text: #ff7b72;
+    --warn-text: #f2c14e;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --pos: #3987e5;
+    --neg: #e66767;
+    --mid: #19221b;
+    --grid: #202b23;
+    --axis: #334538;
+    --track: #19221b;
+  }
+}
+:root[data-design='mono'][data-theme='dark'] {
+  color-scheme: dark;
+  --page: #0a0d0b;
+  --surface: #111712;
+  --sunk: #19221b;
+  --ink: #e9f2eb;
+  --ink-2: #b6c6ba;
+  --muted: #7f9184;
+  --line: #202b23;
+  --line-2: #334538;
+  --accent: #3ddc84;
+  --accent-soft: #11331f;
+  --on-accent: #04130a;
+  --good-text: #3ddc84;
+  --bad-text: #ff7b72;
+  --warn-text: #f2c14e;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --pos: #3987e5;
+  --neg: #e66767;
+  --mid: #19221b;
+  --grid: #202b23;
+  --axis: #334538;
+  --track: #19221b;
+}
+:root[data-design='mono'] body { font-size: 16px; }
+:root[data-design='mono'] .page { gap: 28px; }
+:root[data-design='mono'] .num,
+:root[data-design='mono'] .hero,
+:root[data-design='mono'] .tile .value,
+:root[data-design='mono'] .tbl .r { font-family: var(--num-font); }
+:root[data-design='mono'] .page-head h1 { font-size: 26px; }
+:root[data-design='mono'] .section-title { font-size: 14px; color: var(--accent); letter-spacing: 0.12em; }
+:root[data-design='mono'] .section-title .aside { letter-spacing: 0; }
+:root[data-design='mono'] .panel { border-color: var(--line-2); }
+:root[data-design='mono'] .hero { font-size: 60px; font-weight: 700; letter-spacing: -0.04em; }
+:root[data-design='mono'] .hero-unit { color: var(--accent); }
+:root[data-design='mono'] .tiles { border-color: var(--line-2); background: var(--line-2); }
+:root[data-design='mono'] .tile .value { font-size: 22px; }
+:root[data-design='mono'] .btn { border-radius: 0; border-color: var(--line-2); background: transparent; min-height: 42px; }
+:root[data-design='mono'] .btn:hover { border-color: var(--accent); }
+:root[data-design='mono'] .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
+:root[data-design='mono'] .btn.quiet { border-color: transparent; }
+:root[data-design='mono'] .input,
+:root[data-design='mono'] .select { border-radius: 0; background-color: var(--page); min-height: 42px; }
+:root[data-design='mono'] .tag { border-radius: 0; }
+:root[data-design='mono'] header.topbar .brand { font-family: var(--num-font); color: var(--accent); }
+:root[data-design='mono'] nav.tabbar .tab.router-link-exact-active { color: var(--accent); }
+:root[data-design='mono'] nav.tabbar .tab.router-link-exact-active::before { left: 0; right: 0; }
+
+/* ---- 瑞士平面（swiss）：瑞士平面：黑白高對比、粗標題與粗線、紅色強調；區塊用上下粗細線分隔而不是方框。 ---- */
+:root[data-design='swiss'] {
+  color-scheme: light;
+  --page: #ffffff;
+  --surface: #ffffff;
+  --sunk: #efefef;
+  --ink: #000000;
+  --ink-2: #2e2e2e;
+  --muted: #6b6b6b;
+  --line: #d6d6d6;
+  --line-2: #9a9a9a;
+  --accent: #e10600;
+  --accent-soft: #ffe5e3;
+  --on-accent: #ffffff;
+  --good-text: #0a6b1f;
+  --bad-text: #c40500;
+  --warn-text: #8a5a00;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+  --pos: #2a78d6;
+  --neg: #e34948;
+  --st-good: #0ca30c;
+  --st-warn: #fab219;
+  --st-serious: #ec835a;
+  --st-crit: #d03b3b;
+  --mid: #efefef;
+  --grid: #d6d6d6;
+  --axis: #9a9a9a;
+  --track: #efefef;
+  --radius: 0px;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-design='swiss']:not([data-theme='light']) {
+    color-scheme: dark;
+    --page: #000000;
+    --surface: #000000;
+    --sunk: #1c1c1c;
+    --ink: #ffffff;
+    --ink-2: #d4d4d4;
+    --muted: #8f8f8f;
+    --line: #2e2e2e;
+    --line-2: #6a6a6a;
+    --accent: #ff453a;
+    --accent-soft: #3a0f0c;
+    --on-accent: #000000;
+    --good-text: #4cd964;
+    --bad-text: #ff6b61;
+    --warn-text: #ffcc00;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+    --pos: #3987e5;
+    --neg: #e66767;
+    --mid: #1c1c1c;
+    --grid: #2e2e2e;
+    --axis: #6a6a6a;
+    --track: #1c1c1c;
+  }
+}
+:root[data-design='swiss'][data-theme='dark'] {
+  color-scheme: dark;
+  --page: #000000;
+  --surface: #000000;
+  --sunk: #1c1c1c;
+  --ink: #ffffff;
+  --ink-2: #d4d4d4;
+  --muted: #8f8f8f;
+  --line: #2e2e2e;
+  --line-2: #6a6a6a;
+  --accent: #ff453a;
+  --accent-soft: #3a0f0c;
+  --on-accent: #000000;
+  --good-text: #4cd964;
+  --bad-text: #ff6b61;
+  --warn-text: #ffcc00;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --pos: #3987e5;
+  --neg: #e66767;
+  --mid: #1c1c1c;
+  --grid: #2e2e2e;
+  --axis: #6a6a6a;
+  --track: #1c1c1c;
+}
+:root[data-design='swiss'] body { font-size: 16px; }
+:root[data-design='swiss'] .page { gap: 34px; padding-top: 26px; }
+:root[data-design='swiss'] .page-head h1 { font-size: 42px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.05; }
+:root[data-design='swiss'] .page-head .sub { font-size: 14px; margin-top: 6px; }
+:root[data-design='swiss'] .section { gap: 0; }
+:root[data-design='swiss'] .section-title { font-size: 14px; font-weight: 800; color: var(--ink); letter-spacing: 0.08em; border-top: 4px solid var(--ink); padding: 8px 0 10px; }
+:root[data-design='swiss'] .panel { background: transparent; border: 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+:root[data-design='swiss'] .hero { font-size: 76px; font-weight: 900; letter-spacing: -0.04em; }
+:root[data-design='swiss'] .hero-unit { font-weight: 800; color: var(--ink); }
+:root[data-design='swiss'] .tiles { border: 0; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); background: var(--ink); }
+:root[data-design='swiss'] .tile { background: var(--page); }
+:root[data-design='swiss'] .tile .value { font-size: 24px; font-weight: 800; }
+:root[data-design='swiss'] .btn { border-radius: 0; border: 2px solid var(--ink); background: transparent; font-weight: 800; min-height: 44px; }
+:root[data-design='swiss'] .btn:hover { border-color: var(--ink); background: var(--sunk); }
+:root[data-design='swiss'] .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+:root[data-design='swiss'] .btn.quiet { border-color: transparent; }
+:root[data-design='swiss'] .btn.sm { min-height: 34px; }
+:root[data-design='swiss'] .input,
+:root[data-design='swiss'] .select { border-radius: 0; border: 0; border-bottom: 2px solid var(--ink); background-color: transparent; padding-left: 2px; min-height: 44px; }
+:root[data-design='swiss'] .input:focus,
+:root[data-design='swiss'] .select:focus { border-color: var(--accent); }
+:root[data-design='swiss'] .tag { border-radius: 0; background: var(--ink); color: var(--page); }
+:root[data-design='swiss'] .tag.accent { background: var(--accent); color: var(--on-accent); }
+:root[data-design='swiss'] header.topbar { border-bottom: 4px solid var(--ink); }
+:root[data-design='swiss'] header.topbar .brand { font-weight: 900; letter-spacing: 0.06em; }
+:root[data-design='swiss'] nav.tabbar { border-top: 4px solid var(--ink); background: var(--page); }
+:root[data-design='swiss'] nav.tabbar .tab.router-link-exact-active { font-weight: 900; color: var(--accent); }
+:root[data-design='swiss'] nav.tabbar .tab.router-link-exact-active::before { display: none; }

@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import { prefetchViews, router } from './router'
-import { applyTheme } from './lib/theme'
+import { applyDesign, applyTheme } from './lib/theme'
 import './style.css'
 import { registerServiceWorker } from './lib/push'
 import { initAppLock } from './lib/applock'
@@ -9,6 +9,7 @@ import { initButtonLoading } from './lib/buttonLoading'
 import { initOffline } from './lib/offline'
 import { loadCurrentPeriod } from './lib/store'
 
+applyDesign()
 applyTheme()
 createApp(App).use(router).mount('#app')
 registerServiceWorker()
