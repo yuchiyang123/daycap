@@ -1,24 +1,24 @@
 /*
-  DayCap 設計系統（風格：minimal）
-  極簡大數字：留白多、字大、幾乎沒有框線，用底色區塊分區；一個藍色強調。
+  DayCap 設計系統（風格：vivid）
+  色塊：大數字放在一整塊橘紅色上，其他區塊是白底圓角、沒有框線；按鈕是膠囊形。
   一律平面：不用漸層、陰影、發光、emoji 或圖示字元。
   顏色變數與檔案結尾的「設計層」由 design.py 產生；圖表配色沿用 dataviz 參考色盤。
 */
 :root {
   color-scheme: light;
-  --page: #f3f4f6;
+  --page: #f6f2ee;
   --surface: #ffffff;
-  --sunk: #e9ebef;
-  --ink: #0f1216;
-  --ink-2: #414855;
-  --muted: #6c7482;
-  --line: #e6e8ec;
-  --line-2: #cfd4db;
-  --accent: #1f6feb;
-  --accent-soft: #e1ecff;
+  --sunk: #efe8e1;
+  --ink: #1b1410;
+  --ink-2: #51443b;
+  --muted: #84756a;
+  --line: #ece4dc;
+  --line-2: #d6cabf;
+  --accent: #d9480f;
+  --accent-soft: #ffe7dc;
   --on-accent: #ffffff;
   --good-text: #0a7a2f;
-  --bad-text: #c4321f;
+  --bad-text: #b3261e;
   --warn-text: #8a5a00;
   --series-1: #2a78d6;
   --series-2: #eb6834;
@@ -34,37 +34,44 @@
   --st-warn: #fab219;
   --st-serious: #ec835a;
   --st-crit: #d03b3b;
-  --mid: #e9ebef;
-  --grid: #e6e8ec;
-  --axis: #cfd4db;
-  --track: #e9ebef;
+  --mid: #efe8e1;
+  --grid: #ece4dc;
+  --axis: #d6cabf;
+  --track: #efe8e1;
 
   --sans: 'Noto Sans TC', system-ui, -apple-system, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
   --gutter: 16px;
   --nav-h: 58px;
-  --radius: 16px;
-  --btn-radius: 12px;
+  --radius: 20px;
+  --btn-radius: 999px;
   --panel-bg: var(--surface);
   --panel-border: 0;
   --hero-size: 76px;
+  --hero-bg: var(--accent);
+  --hero-ink: var(--on-accent);
+  --hero-muted: color-mix(in srgb, var(--on-accent) 78%, transparent);
+  --hero-pad: 22px 22px 20px;
+  --hero-radius: 24px;
+  --hero-track: color-mix(in srgb, var(--on-accent) 28%, transparent);
+  --hero-fill: var(--on-accent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --page: #15181d;
-    --surface: #20242b;
-    --sunk: #2b3039;
-    --ink: #f6f8fb;
-    --ink-2: #c9cfd9;
-    --muted: #929aa8;
-    --line: #2d323b;
-    --line-2: #414855;
-    --accent: #5aa2ff;
-    --accent-soft: #1d3150;
-    --on-accent: #08111f;
-    --good-text: #4ecb6c;
-    --bad-text: #ff8370;
+    --page: #171311;
+    --surface: #241e1a;
+    --sunk: #302823;
+    --ink: #fbf6f2;
+    --ink-2: #d8cabe;
+    --muted: #a19286;
+    --line: #332a24;
+    --line-2: #4a3e36;
+    --accent: #ff7a45;
+    --accent-soft: #44241a;
+    --on-accent: #1d0d06;
+    --good-text: #57cf75;
+    --bad-text: #ff8c7a;
     --warn-text: #e6b35a;
     --series-1: #3987e5;
     --series-2: #d95926;
@@ -76,27 +83,27 @@
     --series-8: #e66767;
     --pos: #3987e5;
     --neg: #e66767;
-    --mid: #2b3039;
-    --grid: #2d323b;
-    --axis: #414855;
-    --track: #2b3039;
+    --mid: #302823;
+    --grid: #332a24;
+    --axis: #4a3e36;
+    --track: #302823;
   }
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --page: #15181d;
-  --surface: #20242b;
-  --sunk: #2b3039;
-  --ink: #f6f8fb;
-  --ink-2: #c9cfd9;
-  --muted: #929aa8;
-  --line: #2d323b;
-  --line-2: #414855;
-  --accent: #5aa2ff;
-  --accent-soft: #1d3150;
-  --on-accent: #08111f;
-  --good-text: #4ecb6c;
-  --bad-text: #ff8370;
+  --page: #171311;
+  --surface: #241e1a;
+  --sunk: #302823;
+  --ink: #fbf6f2;
+  --ink-2: #d8cabe;
+  --muted: #a19286;
+  --line: #332a24;
+  --line-2: #4a3e36;
+  --accent: #ff7a45;
+  --accent-soft: #44241a;
+  --on-accent: #1d0d06;
+  --good-text: #57cf75;
+  --bad-text: #ff8c7a;
   --warn-text: #e6b35a;
   --series-1: #3987e5;
   --series-2: #d95926;
@@ -108,10 +115,10 @@
   --series-8: #e66767;
   --pos: #3987e5;
   --neg: #e66767;
-  --mid: #2b3039;
-  --grid: #2d323b;
-  --axis: #414855;
-  --track: #2b3039;
+  --mid: #302823;
+  --grid: #332a24;
+  --axis: #4a3e36;
+  --track: #302823;
 }
 
 *,
@@ -629,25 +636,27 @@ input.input::-webkit-outer-spin-button {
 /* ==== 設計層（design.py 產生，不要手改）==== */
 section[id] { scroll-margin-top: 64px; }
 body { font-size: 16px; }
-.page { gap: 28px; padding-top: 24px; }
-.page-head h1 { font-size: 30px; letter-spacing: 0; }
+.page { gap: 26px; padding-top: 22px; }
+.page-head h1 { font-size: 30px; font-weight: 800; letter-spacing: 0; }
 .page-head .sub { font-size: 14px; }
 .section { gap: 12px; }
-.section-title { font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: 0; }
+.section-title { font-size: 17px; font-weight: 800; color: var(--ink); letter-spacing: 0; }
 .section-title .aside { font-size: 13px; }
 .panel { border: 0; }
 .tiles { border: 0; gap: 2px; background: transparent; }
-.hero { font-size: 56px; font-weight: 700; }
-.btn { min-height: 44px; border-radius: var(--btn-radius); border-color: transparent; background: var(--sunk); font-weight: 600; font-size: 15px; }
+.hero { font-size: 56px; font-weight: 800; }
+.btn { min-height: 44px; border-radius: 999px; border-color: transparent; background: var(--sunk); font-weight: 700; font-size: 15px; padding: 0 18px; }
 .btn:hover { border-color: transparent; filter: brightness(0.97); }
 .btn.primary { background: var(--accent); color: var(--on-accent); }
-.btn.quiet { background: transparent; }
-.btn.sm { min-height: 36px; border-radius: 10px; font-size: 14px; }
-.input, .select { min-height: 46px; border-radius: 12px; border-color: transparent; background-color: var(--sunk); }
-.input.compact, .select.compact { min-height: 38px; border-radius: 10px; }
-.tag { border-radius: 6px; }
+.btn.quiet { background: transparent; padding: 0 10px; }
+.btn.sm { min-height: 36px; font-size: 14px; padding: 0 14px; }
+.input, .select { min-height: 46px; border-radius: 14px; border-color: transparent; background-color: var(--sunk); }
+.input.compact, .select.compact { min-height: 38px; border-radius: 12px; }
+.tag { border-radius: 999px; padding: 0 8px; }
 header.topbar { border-bottom: 0; }
-nav.tabbar { border-top: 0; }
+header.topbar .brand { color: var(--accent); }
+nav.tabbar { border-top: 0; padding-left: 6px; padding-right: 6px; }
 nav.tabbar .tab { font-size: 15px; }
-nav.tabbar .tab.router-link-exact-active { color: var(--accent); font-weight: 700; }
-nav.tabbar .tab.router-link-exact-active::before { display: none; }
+nav.tabbar .tab.router-link-exact-active { color: var(--accent); font-weight: 800; }
+nav.tabbar .tab.router-link-exact-active::before { top: 8px; bottom: 8px; left: 4px; right: 4px; height: auto; border-radius: 999px; background: var(--accent-soft); z-index: -1; }
+nav.tabbar { isolation: isolate; }
