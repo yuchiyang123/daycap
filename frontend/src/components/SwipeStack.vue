@@ -4,6 +4,7 @@ import { createEntry, deleteEntry } from '../api/endpoints'
 import type { SlotView } from '../api/types'
 import { setPeriod, store } from '../lib/store'
 import { enqueue, isNetworkError } from '../lib/offline'
+import { haptic } from '../lib/haptics'
 import { money, shortDate } from '../lib/format'
 
 /**
@@ -64,6 +65,8 @@ let startX = 0
 let startY = 0
 let width = 300
 const THRESHOLD = 0.35
+/** 拖過門檻（放手就會成立）時輕震一下；拉回來再拉過去會再震 */
+let pastThreshold = false
 
 function down(e: PointerEvent) {
   if (busy.value || flying.value) return
@@ -71,12 +74,16 @@ function down(e: PointerEvent) {
   startX = e.clientX
   startY = e.clientY
   width = (e.currentTarget as HTMLElement).offsetWidth || 300
+  pastThreshold = false
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
 }
 function move(e: PointerEvent) {
   if (!dragging.value) return
   dx.value = e.clientX - startX
   dy.value = (e.clientY - startY) * 0.3
+  const past = Math.abs(dx.value / width) > THRESHOLD
+  if (past && !pastThreshold) haptic('tick')
+  pastThreshold = past
 }
 function up() {
   if (!dragging.value) return
@@ -106,6 +113,7 @@ const cardStyle = computed(() => {
 function fling(dir: 'left' | 'right') {
   const card = top.value
   if (!card) return
+  haptic('confirm')
   flying.value = dir
   setTimeout(async () => {
     flying.value = null
@@ -169,6 +177,7 @@ async function confirm(card: Card) {
 async function confirmAll() {
   const all = [...cards.value]
   if (!all.length) return
+  haptic('confirm')
   busy.value = true
   const ids: number[] = []
   try {

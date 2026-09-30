@@ -5,6 +5,7 @@ import { applyTemplate, getOnboarding, previewTemplate, skipOnboarding } from '.
 import type { BlockChoice, TemplateDto, TemplatePreview } from '../api/types'
 import { loadCurrentPeriod, store } from '../lib/store'
 import { money, shortDate, signed } from '../lib/format'
+import { haptic } from '../lib/haptics'
 
 /**
  * 新手引導（§20）：三題＋收入 → 範本預覽（看到每天大概能花多少）→ 示範一張超支卡、一張沒回報的卡 → 開始用。
@@ -110,13 +111,22 @@ function down(e: PointerEvent) {
   startX = e.clientX
   ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
 }
+let pastThreshold = false
 function move(e: PointerEvent) {
-  if (dragging) dragX.value = Math.max(0, e.clientX - startX)
+  if (!dragging) return
+  dragX.value = Math.max(0, e.clientX - startX)
+  const past = dragX.value > ((e.currentTarget as HTMLElement).offsetWidth || 300) * 0.35
+  if (past && !pastThreshold) haptic('tick')
+  pastThreshold = past
 }
 function up(e: PointerEvent) {
   dragging = false
+  pastThreshold = false
   const w = (e.currentTarget as HTMLElement).offsetWidth || 300
-  if (dragX.value > w * 0.35) demo.value = 'overspent'
+  if (dragX.value > w * 0.35) {
+    haptic('confirm')
+    demo.value = 'overspent'
+  }
   dragX.value = 0
 }
 
