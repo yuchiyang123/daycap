@@ -14,6 +14,7 @@ import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, HolidayShi
 import { store, loadCurrentPeriod } from '../lib/store'
 import { dayLabel, groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
 import { applyTheme, currentTheme, type ThemeChoice } from '../lib/theme'
+import { haptic } from '../lib/haptics'
 
 /**
  * 設定版本化（§4.1）：每次儲存都新增一個版本，一般從明天起生效；
@@ -336,6 +337,20 @@ async function toggleDay(d: CalendarDayDto) {
 
 // ---- 外觀 / 帳號 ----
 const theme = ref<ThemeChoice>(currentTheme())
+
+// ---- 滑卡震動測試 ----
+const hapticMsg = ref<string | null>(null)
+function testHaptic() {
+  const how = haptic('confirm')
+  const ios = /iPhone|iPad/.test(navigator.userAgent)
+  const ver = navigator.userAgent.match(/OS (\d+)_/)?.[1]
+  hapticMsg.value =
+    how === 'vibrate'
+      ? '用 Android 震動。沒感覺的話，檢查手機的震動 / 觸覺回饋設定。'
+      : ios
+        ? `用 iOS 系統觸覺回饋（iOS ${ver ?? '?'}）。要 iOS 18 以上，且「設定 → 聲音與觸覺 → 系統觸覺回饋」要開。`
+        : '這個瀏覽器不支援震動。'
+}
 function pickTheme(t: ThemeChoice) {
   theme.value = t
   applyTheme(t)
@@ -643,6 +658,13 @@ async function signOut() {
             <span class="muted">{{ store.me?.userName ?? store.me?.userId }}</span>
             <button class="btn sm" @click="signOut">登出</button>
           </div>
+        </div>
+        <div class="panel panel-pad haptic-row">
+          <span>
+            滑卡震動
+            <span class="muted small">{{ hapticMsg ?? '按一下試試這支手機會不會震' }}</span>
+          </span>
+          <button type="button" class="btn sm" @click="testHaptic">測試震動</button>
         </div>
       </section>
     </template>
@@ -1088,5 +1110,16 @@ async function signOut() {
   .two {
     grid-template-columns: 1fr;
   }
+}
+.haptic-row {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.haptic-row .small {
+  display: block;
+  font-size: 12px;
 }
 </style>

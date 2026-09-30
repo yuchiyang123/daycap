@@ -67,6 +67,13 @@ let width = 300
 const THRESHOLD = 0.35
 /** 拖過門檻（放手就會成立）時輕震一下；拉回來再拉過去會再震 */
 let pastThreshold = false
+/** iPhone 只在 touchend / click 裡允許觸覺回饋：pointerup 判定成立後，touchend 再補震一次（重複的會被略過） */
+let hapticPending = false
+function onTouchEnd() {
+  if (!hapticPending) return
+  hapticPending = false
+  haptic('confirm')
+}
 
 function down(e: PointerEvent) {
   if (busy.value || flying.value) return
@@ -114,6 +121,7 @@ function fling(dir: 'left' | 'right') {
   const card = top.value
   if (!card) return
   haptic('confirm')
+  hapticPending = true
   flying.value = dir
   setTimeout(async () => {
     flying.value = null
@@ -226,6 +234,7 @@ function dateTag(c: Card) {
         @pointermove="move"
         @pointerup="up"
         @pointercancel="up"
+        @touchend="onTouchEnd"
       >
         <span class="edge edge-r">→ 照預算</span>
         <span class="edge edge-l">改金額 ←</span>

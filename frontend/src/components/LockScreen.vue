@@ -37,7 +37,7 @@ async function signOut() {
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: var(--bg);
+  background: var(--page);
   display: flex;
   align-items: center;
   justify-content: center;
