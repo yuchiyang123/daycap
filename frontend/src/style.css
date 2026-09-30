@@ -1,25 +1,25 @@
 /*
-  DayCap 設計系統：平面、以字為主、一個強調色。
-  不用漸層、陰影、發光、emoji 或圖示字元；層次只靠 1px 線、底色深淺與字重。
-  圖表配色沿用 dataviz 參考色盤（已驗證色盲可辨），淺色 / 深色各一組。
+  DayCap 設計系統（風格：mono）
+  終端機：等寬數字、直角細框、綠色強調；版面和原本一樣，層次靠字級和顏色。
+  一律平面：不用漸層、陰影、發光、emoji 或圖示字元。
+  顏色變數與檔案結尾的「設計層」由 design.py 產生；圖表配色沿用 dataviz 參考色盤。
 */
 :root {
   color-scheme: light;
-  --page: #f4f3ef;
-  --surface: #fcfcfb;
-  --sunk: #edece7;
-  --ink: #141412;
-  --ink-2: #52514e;
-  --muted: #7a7873;
-  --line: #e1e0d9;
-  --line-2: #c3c2b7;
-  --accent: #256abf;
-  --accent-soft: #e3edf9;
+  --page: #f3f6f1;
+  --surface: #fbfcfa;
+  --sunk: #e7ece5;
+  --ink: #0f1a13;
+  --ink-2: #3e4d43;
+  --muted: #6c7b70;
+  --line: #d9e1d8;
+  --line-2: #b7c3b8;
+  --accent: #0b7a43;
+  --accent-soft: #dcf1e4;
   --on-accent: #ffffff;
-  --good-text: #006300;
-  --bad-text: #b42f2f;
+  --good-text: #0b7a43;
+  --bad-text: #b3261e;
   --warn-text: #8a5a00;
-
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -30,38 +30,39 @@
   --series-8: #e34948;
   --pos: #2a78d6;
   --neg: #e34948;
-  --mid: #f0efec;
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
   --st-good: #0ca30c;
   --st-warn: #fab219;
   --st-serious: #ec835a;
   --st-crit: #d03b3b;
-  --track: #e8e7e1;
+  --mid: #e7ece5;
+  --grid: #d9e1d8;
+  --axis: #b7c3b8;
+  --track: #e7ece5;
 
   --sans: 'Noto Sans TC', system-ui, -apple-system, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
-  --radius: 6px;
   --gutter: 16px;
-  --nav-h: 56px;
+  --nav-h: 58px;
+  --radius: 0px;
+  --num-font: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Roboto Mono', monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --sunk: #232321;
-    --ink: #ffffff;
-    --ink-2: #c3c2b7;
-    --muted: #8f8d87;
-    --line: #2c2c2a;
-    --line-2: #3d3d3a;
-    --accent: #3987e5;
-    --accent-soft: #1a2940;
-    --on-accent: #ffffff;
-    --good-text: #3fbf3f;
-    --bad-text: #ee7466;
-    --warn-text: #e0a64a;
+    --page: #0a0d0b;
+    --surface: #111712;
+    --sunk: #19221b;
+    --ink: #e9f2eb;
+    --ink-2: #b6c6ba;
+    --muted: #7f9184;
+    --line: #202b23;
+    --line-2: #334538;
+    --accent: #3ddc84;
+    --accent-soft: #11331f;
+    --on-accent: #04130a;
+    --good-text: #3ddc84;
+    --bad-text: #ff7b72;
+    --warn-text: #f2c14e;
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -72,28 +73,28 @@
     --series-8: #e66767;
     --pos: #3987e5;
     --neg: #e66767;
-    --mid: #383835;
-    --grid: #2c2c2a;
-    --axis: #383835;
-    --track: #2a2a28;
+    --mid: #19221b;
+    --grid: #202b23;
+    --axis: #334538;
+    --track: #19221b;
   }
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --page: #0d0d0d;
-  --surface: #1a1a19;
-  --sunk: #232321;
-  --ink: #ffffff;
-  --ink-2: #c3c2b7;
-  --muted: #8f8d87;
-  --line: #2c2c2a;
-  --line-2: #3d3d3a;
-  --accent: #3987e5;
-  --accent-soft: #1a2940;
-  --on-accent: #ffffff;
-  --good-text: #3fbf3f;
-  --bad-text: #ee7466;
-  --warn-text: #e0a64a;
+  --page: #0a0d0b;
+  --surface: #111712;
+  --sunk: #19221b;
+  --ink: #e9f2eb;
+  --ink-2: #b6c6ba;
+  --muted: #7f9184;
+  --line: #202b23;
+  --line-2: #334538;
+  --accent: #3ddc84;
+  --accent-soft: #11331f;
+  --on-accent: #04130a;
+  --good-text: #3ddc84;
+  --bad-text: #ff7b72;
+  --warn-text: #f2c14e;
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -104,10 +105,10 @@
   --series-8: #e66767;
   --pos: #3987e5;
   --neg: #e66767;
-  --mid: #383835;
-  --grid: #2c2c2a;
-  --axis: #383835;
-  --track: #2a2a28;
+  --mid: #19221b;
+  --grid: #202b23;
+  --axis: #334538;
+  --track: #19221b;
 }
 
 *,
@@ -621,3 +622,26 @@ input.input::-webkit-outer-spin-button {
   background: var(--surface);
   padding: 8px 12px;
 }
+
+/* ==== 設計層（design.py 產生，不要手改）==== */
+section[id] { scroll-margin-top: 64px; }
+body { font-size: 16px; }
+.page { gap: 28px; }
+.num, .hero, .tile .value, .tbl .r { font-family: var(--num-font); }
+.page-head h1 { font-size: 26px; }
+.section-title { font-size: 14px; color: var(--accent); letter-spacing: 0.12em; }
+.section-title .aside { letter-spacing: 0; }
+.panel { border-color: var(--line-2); }
+.hero { font-size: 60px; font-weight: 700; letter-spacing: -0.04em; }
+.hero-unit { color: var(--accent); }
+.tiles { border-color: var(--line-2); background: var(--line-2); }
+.tile .value { font-size: 22px; }
+.btn { border-radius: 0; border-color: var(--line-2); background: transparent; min-height: 42px; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
+.btn.quiet { border-color: transparent; }
+.input, .select { border-radius: 0; background-color: var(--page); min-height: 42px; }
+.tag { border-radius: 0; }
+header.topbar .brand { font-family: var(--num-font); color: var(--accent); }
+nav.tabbar .tab.router-link-exact-active { color: var(--accent); }
+nav.tabbar .tab.router-link-exact-active::before { left: 0; right: 0; }
