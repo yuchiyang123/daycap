@@ -5,6 +5,7 @@ import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import MealTable from '../components/MealTable.vue'
 import PushSettings from '../components/PushSettings.vue'
 import SubItemsEditor from '../components/SubItemsEditor.vue'
+import HapticButton from '../components/HapticButton.vue'
 import TrustSettings from '../components/TrustSettings.vue'
 import { watch } from 'vue'
 import { estimateSettings } from '../api/endpoints'
@@ -696,6 +697,10 @@ async function signOut() {
               <span>D. 直接點這個系統開關，有震嗎？</span>
               <input type="checkbox" switch />
             </label>
+            <div class="haptic-row small">
+              <span>E. 滑卡的「照預算」按鈕用的做法，點點看有震嗎？</span>
+              <HapticButton class="sm" @press="hapticMsg = 'E 有觸發'">點我</HapticButton>
+            </div>
             <p class="muted small">如果連 D 都不會震，代表這個環境（例如從主畫面打開的 App）網頁完全拿不到觸覺回饋。</p>
           </template>
         </div>

@@ -5,6 +5,7 @@ import type { SlotView } from '../api/types'
 import { setPeriod, store } from '../lib/store'
 import { enqueue, isNetworkError } from '../lib/offline'
 import { haptic } from '../lib/haptics'
+import HapticButton from './HapticButton.vue'
 import { money, shortDate } from '../lib/format'
 
 /**
@@ -220,7 +221,7 @@ function dateTag(c: Card) {
   <section v-if="top || toast" class="swipe">
     <div v-if="top" class="swipe-head">
       <span class="muted small">待確認 {{ cards.length }} 個時段・右滑照預算，左滑修正</span>
-      <button v-if="cards.length > 1" type="button" class="btn quiet sm" :disabled="busy" @click="confirmAll">全部照預算</button>
+      <HapticButton v-if="cards.length > 1" class="quiet sm" :disabled="busy" @press="confirmAll">全部照預算</HapticButton>
     </div>
 
     <div v-if="top" class="deck">
@@ -245,8 +246,8 @@ function dateTag(c: Card) {
       </div>
     </div>
     <div v-if="top" class="swipe-btns">
-      <button type="button" class="btn" :disabled="busy" @click="fling('left')">修正</button>
-      <button type="button" class="btn primary" :disabled="busy" @click="fling('right')">照預算</button>
+      <HapticButton :disabled="busy" @press="fling('left')">修正</HapticButton>
+      <HapticButton class="primary" :disabled="busy" @press="fling('right')">照預算</HapticButton>
     </div>
 
     <div v-if="toast" class="toast" role="status">
@@ -261,6 +262,9 @@ function dateTag(c: Card) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* 卡片滑出去的部分裁掉，不然會把整頁撐寬、出現左右捲動 */
+  overflow-x: clip;
+  overflow-y: visible;
 }
 .swipe-head {
   display: flex;

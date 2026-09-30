@@ -437,6 +437,7 @@ const segs = [
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow-x: clip;
 }
 .card {
   margin: 0 20px;
