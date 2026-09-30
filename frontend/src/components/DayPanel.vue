@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type { DayView, SlotView } from '../api/types'
 import { store, setPeriod } from '../lib/store'
-import { deleteEntry, setDay } from '../api/endpoints'
+import { createEntry, deleteEntry, setDay } from '../api/endpoints'
 import { money, signed } from '../lib/format'
 
 /**
@@ -45,6 +45,23 @@ function status(s: SlotView): { text: string; tone: string } {
 }
 
 const removing = ref<number | null>(null)
+
+// ---- 一鍵照預算：不用打開回報畫面 ----
+const canQuick = (s: SlotView) => s.actual === null && s.planned > 0 && props.day.status !== 'future' && !period.value.closed
+async function asPlanned(s: SlotView) {
+  setPeriod(
+    await createEntry(period.value.id, {
+      date: props.day.date,
+      categoryId: s.categoryId,
+      slotId: s.slotId,
+      inputMode: 'Actual',
+      amount: s.planned,
+      usePool: true,
+      note: null,
+      subscription: null,
+    }),
+  )
+}
 
 // ---- 全天例外（§9.3）：今天全部 0 / 今天全部照預算，按兩次確認 ----
 const hasUnreported = computed(() => props.day.slots.some((s) => s.actual === null))
@@ -89,7 +106,7 @@ async function removeExtra(id: number) {
         <span class="num muted">這天 {{ money(g.planned) }}</span>
       </div>
       <ul class="list">
-        <li v-for="s in g.slots" :key="s.slotId">
+        <li v-for="s in g.slots" :key="s.slotId" class="slot-row">
           <button type="button" class="slot" @click="emit('report', s, g.name)">
             <span class="s-main">
               <span class="s-name">{{ s.name }}</span>
@@ -101,6 +118,7 @@ async function removeExtra(id: number) {
             </span>
             <span class="s-go">{{ s.actual === null ? '回報' : '修改' }}</span>
           </button>
+          <button v-if="canQuick(s)" type="button" class="btn sm quick" @click="asPlanned(s)">照預算</button>
         </li>
       </ul>
     </div>
@@ -170,14 +188,27 @@ async function removeExtra(id: number) {
   grid-template-columns: 1fr auto auto;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  min-height: 56px;
+  padding: 14px 16px;
+  min-height: 64px;
   text-align: left;
   background: none;
   border: 0;
 }
 .slot {
   cursor: pointer;
+}
+.slot-row {
+  display: flex;
+  align-items: center;
+}
+.slot-row .slot {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.quick {
+  flex: none;
+  margin-right: 12px;
 }
 .slot:hover {
   background: var(--sunk);
@@ -188,11 +219,11 @@ async function removeExtra(id: number) {
   min-width: 0;
 }
 .s-name {
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 17px;
+  font-weight: 600;
 }
 .s-status {
-  font-size: 12px;
+  font-size: 13px;
 }
 .s-amt {
   display: flex;
@@ -200,8 +231,9 @@ async function removeExtra(id: number) {
   align-items: flex-end;
 }
 .s-amt b {
-  font-size: 17px;
-  font-weight: 600;
+  font-family: var(--num-font, inherit);
+  font-size: 20px;
+  font-weight: 700;
 }
 .orig {
   font-size: 11px;

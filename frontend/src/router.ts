@@ -19,6 +19,12 @@ export function prefetchViews() {
 
 export const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to, _from, saved) {
+    if (saved) return saved
+    // 錨點所在的區塊可能要等資料回來才出現，稍等一下再捲
+    if (to.hash) return new Promise((resolve) => setTimeout(() => resolve({ el: to.hash, top: 64 }), 450))
+    return { top: 0 }
+  },
   routes: [
     { path: '/login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
     { path: '/sso/callback', redirect: '/' },

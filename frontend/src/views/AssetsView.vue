@@ -230,7 +230,7 @@ function addGoal() {
         </div>
       </section>
 
-      <section class="section">
+      <section id="debts" class="section">
         <h2 class="section-title">應收應付<span class="aside">代墊、借出借入；不算花費</span></h2>
         <DebtsPanel @changed="load()" />
       </section>

@@ -241,7 +241,7 @@ async function savePayday() {
       </div>
     </section>
 
-    <section class="section">
+    <section id="trips" class="section">
       <h2 class="section-title">旅遊<span class="aside">暫時接管每日時段，回來後恢復</span></h2>
       <TripsPanel />
     </section>
@@ -251,7 +251,7 @@ async function savePayday() {
       <IncomeGapPanel />
     </section>
 
-    <section class="section">
+    <section id="jars" class="section">
       <h2 class="section-title">罐子<span class="aside">預約支出、年繳預留、儲蓄目標；快到期的在前</span></h2>
       <JarsPanel />
     </section>
