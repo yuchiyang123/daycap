@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>找不到 - 日額</title>
+    <style>
+      /* nginx 層的 404（找不到檔案時）：不載入 app，樣式全部寫在這裡，配色跟 app 原本的一樣 */
+      :root {
+        color-scheme: light;
+        --page: #f4f3ef;
+        --ink: #141412;
+        --muted: #7a7873;
+        --line: #c3c2b7;
+        --accent: #256abf;
+        --on-accent: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --page: #0d0d0d;
+          --ink: #ffffff;
+          --muted: #8f8d87;
+          --line: #3d3d3a;
+          --accent: #3987e5;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        background: var(--page);
+        color: var(--ink);
+        font-family: 'Noto Sans TC', system-ui, -apple-system, 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+        line-height: 1.55;
+      }
+      main { max-width: 440px; width: 100%; }
+      .code { font-size: 72px; font-weight: 700; line-height: 1; color: var(--accent); margin: 0 0 12px; font-variant-numeric: tabular-nums; }
+      h1 { font-size: 22px; margin: 0 0 8px; }
+      p { margin: 0 0 20px; color: var(--muted); }
+      a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 40px;
+        padding: 0 16px;
+        border-radius: 4px;
+        background: var(--accent);
+        color: var(--on-accent);
+        text-decoration: none;
+        font-weight: 500;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="code">404</p>
+      <h1>找不到這個頁面</h1>
+      <p>這個網址沒有東西。可能是 app 剛更新、舊的檔案已經不在了，回首頁重新整理一次就好。</p>
+      <a href="/">回日額</a>
+    </main>
+  </body>
+</html>

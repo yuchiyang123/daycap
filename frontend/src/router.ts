@@ -31,7 +31,8 @@ export const router = createRouter({
     { path: '/assets', component: views.assets },
     // 設定頁沒有本期也要能用（還沒到開始日期時就是在這裡設定）
     { path: '/settings', component: views.settings, meta: { wantsPeriod: true } },
-    { path: '/:rest(.*)*', redirect: '/' },
+    // 網址打錯：顯示 404 頁，不要默默跳回首頁
+    { path: '/:rest(.*)*', component: () => import('./views/NotFoundView.vue'), meta: { public: true } },
   ],
 })
 
