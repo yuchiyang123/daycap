@@ -209,6 +209,27 @@ public sealed class AutoMoneyTests : IDisposable
         Assert.Equal(74_000, (await _accounts.BalancesAsync("u"))[_savings]); // 餘額照樣更新
     }
 
+    /// <summary>回歸：先買進、之後才勾「錢先從外部存進」，那一期的存入要補上（正式站 10/6 發生過）。</summary>
+    [Fact]
+    public async Task Ticking_funded_externally_after_buying_backfills_the_deposit()
+    {
+        await SetupSavingsOnly();
+        _quotes.Close = (new DateOnly(2026, 10, 6), 116.5m);
+        var s = (await _settings.GetAsync("u")).Settings;
+        var off = s.Categories.Select(c => c with { FixedItems = c.FixedItems.Select(f => f.HoldingId is not null ? f with { FundedExternally = null } : f).ToList() }).ToList();
+        await _settings.SaveAsync("u", new SaveSettingsRequest(s with { Categories = off }, new DateOnly(2026, 10, 1), "先不勾"));
+        await _auto.RunAsync("u");
+        var before = (await _accounts.BalancesAsync("u"))[_savings];
+
+        var on = off.Select(c => c with { FixedItems = c.FixedItems.Select(f => f.HoldingId is not null ? f with { FundedExternally = true } : f).ToList() }).ToList();
+        await _settings.SaveAsync("u", new SaveSettingsRequest(s with { Categories = on }, new DateOnly(2026, 10, 1), "補勾"));
+        Assert.Equal(1, await _auto.RunAsync("u"));
+        Assert.Equal(0, await _auto.RunAsync("u"));
+
+        Assert.Equal(before + 9_000, (await _accounts.BalancesAsync("u"))[_savings]);
+        Assert.Equal(1, await _db.HoldingPurchases.CountAsync()); // 不會再買一次
+    }
+
     private sealed class FakeQuotes : IQuoteService
     {
         public (DateOnly, decimal)? Close { get; set; }

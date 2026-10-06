@@ -96,7 +96,27 @@ public class AutoMoneyService(DayCapDbContext db, ISettingsService settings, IQu
                 else if (item.HoldingId is { } holdingId)
                 {
                     var key = $"dca:{item.Id}:{d:yyyy-MM-dd}";
-                    if (doneKeys.Contains(key)) continue;
+                    if (doneKeys.Contains(key))
+                    {
+                        // 已經買過，但設定是「錢先從外部存進」而那筆存入沒記到（例如買進後才補勾這個選項）：補上
+                        var depositKey = $"deposit:{item.Id}:{d:yyyy-MM-dd}";
+                        if (item.FundedExternally == true && !doneKeys.Contains(depositKey))
+                        {
+                            var bought = await db.HoldingPurchases.AsNoTracking()
+                                .FirstOrDefaultAsync(p => p.UserId == userId && p.AutoKey == key && !p.IsVoid, ct);
+                            if (bought is not null && accounts.Contains(bought.FromAccountId))
+                            {
+                                db.AssetAdjustments.Add(new AssetAdjustment
+                                {
+                                    UserId = userId, CashAccountId = bought.FromAccountId, Date = bought.TradeDate, Amount = bought.Budget,
+                                    Note = $"自動存入：{item.Name}", Source = "auto", AutoKey = depositKey, CreatedAt = clock.UtcNow,
+                                });
+                                doneKeys.Add(depositKey);
+                                created++;
+                            }
+                        }
+                        continue;
+                    }
                     if (await BuyAsync(userId, item, holdingId, d, today, key, ct))
                     {
                         doneKeys.Add(key);
