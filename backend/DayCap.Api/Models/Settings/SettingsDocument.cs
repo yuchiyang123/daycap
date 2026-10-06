@@ -107,7 +107,16 @@ public record FixedItemDoc(
     BillingCycle Cycle,
     int? BillingMonth,
     bool IsActive,
-    DateOnly? ActiveFrom);
+    DateOnly? ActiveFrom,
+    // 自動執行（扣款日當天）：從 FromAccountId 轉到 ToAccountId（例如存進本金戶），
+    // 或用當天收盤價定期定額買進 HoldingId 這檔股票。兩者擇一，都空＝只是預算上的固定支出。
+    int? FromAccountId = null,
+    int? ToAccountId = null,
+    int? HoldingId = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsAuto => FromAccountId is not null && (ToAccountId is not null || HoldingId is not null);
+}
 
 public static class SettingsJson
 {

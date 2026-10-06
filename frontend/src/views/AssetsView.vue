@@ -213,6 +213,7 @@ function addGoal() {
               <tr v-for="h in data.holdings" :key="h.id">
                 <td>
                   <b>{{ h.symbol }}</b> {{ h.name }}
+                  <span v-if="h.dca" class="dca">{{ h.dca }}<template v-if="h.lastPurchase">・上次 {{ h.lastPurchase }}</template></span>
                   <span v-if="h.priceSource === 'manual'" class="tag">手動價</span>
                   <span v-else-if="h.priceSource === 'none'" class="tag">抓不到價格</span>
                 </td>
@@ -453,5 +454,11 @@ function addGoal() {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+.dca {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: normal;
 }
 </style>

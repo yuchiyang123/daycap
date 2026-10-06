@@ -10,6 +10,9 @@ public interface IQuoteService
 {
     /// <summary>確保這些代號的收盤價夠新（超過 6 小時就重抓），回傳目前快取。</summary>
     Task<Dictionary<string, PriceQuote>> GetQuotesAsync(IReadOnlyCollection<string> symbols, bool force, CancellationToken ct = default);
+
+    /// <summary>這一天（休市就往後找第一個交易日）的收盤價；還沒有資料（例如還沒收盤）回 null。</summary>
+    Task<(DateOnly TradeDate, decimal Close)?> GetCloseOnOrAfterAsync(string symbol, DateOnly date, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -64,6 +67,58 @@ public class QuoteService(
             FetchLock.Release();
         }
         return cached;
+    }
+
+    public async Task<(DateOnly TradeDate, decimal Close)?> GetCloseOnOrAfterAsync(string symbol, DateOnly date, CancellationToken ct = default)
+    {
+        symbol = symbol.Trim().ToUpperInvariant();
+        // 先試證交所，再試櫃買中心；這個月找不到（月底休市）就看下個月
+        foreach (var month in new[] { date, new DateOnly(date.Year, date.Month, 1).AddMonths(1) })
+        {
+            var rows = await HistoryRowsAsync(
+                $"https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date={month:yyyyMMdd}&stockNo={Uri.EscapeDataString(symbol)}&response=json", false, ct);
+            if (rows.Count == 0)
+                rows = await HistoryRowsAsync(
+                    $"https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock?code={Uri.EscapeDataString(symbol)}&date={month:yyyy'/'MM'/'dd}&response=json", true, ct);
+            var hit = rows.Where(r => r.Date >= date).OrderBy(r => r.Date).FirstOrDefault();
+            if (hit.Close > 0) return (hit.Date, hit.Close);
+        }
+        return null;
+    }
+
+    /// <summary>每日成交資訊：第 1 欄民國日期（115/10/06）、第 7 欄收盤價。</summary>
+    private async Task<List<(DateOnly Date, decimal Close)>> HistoryRowsAsync(string url, bool tpex, CancellationToken ct)
+    {
+        var result = new List<(DateOnly, decimal)>();
+        try
+        {
+            var client = httpFactory.CreateClient(HttpClientName);
+            using var res = await client.GetAsync(url, ct);
+            if (!res.IsSuccessStatusCode) return result;
+            await using var stream = await res.Content.ReadAsStreamAsync(ct);
+            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            JsonElement data;
+            if (tpex)
+            {
+                if (!doc.RootElement.TryGetProperty("tables", out var tables) || tables.GetArrayLength() == 0) return result;
+                if (!tables[0].TryGetProperty("data", out data)) return result;
+            }
+            else if (!doc.RootElement.TryGetProperty("data", out data)) return result;
+            foreach (var row in data.EnumerateArray())
+            {
+                if (row.GetArrayLength() < 7) continue;
+                var parts = (row[0].GetString() ?? "").Split('/');
+                if (parts.Length != 3 || !int.TryParse(parts[0], out var y) || !int.TryParse(parts[1], out var m) || !int.TryParse(parts[2], out var d)) continue;
+                if (!decimal.TryParse((row[6].GetString() ?? "").Replace(",", ""), System.Globalization.NumberStyles.Number,
+                        System.Globalization.CultureInfo.InvariantCulture, out var close) || close <= 0) continue;
+                result.Add((new DateOnly(y + 1911, m, d), close));
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        {
+            logger.LogWarning(ex, "Price history {Url} failed", url);
+        }
+        return result;
     }
 
     private async Task FetchTwseAsync(Dictionary<string, (string, decimal, DateOnly)> into, CancellationToken ct)

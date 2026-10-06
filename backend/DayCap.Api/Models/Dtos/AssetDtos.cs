@@ -27,7 +27,10 @@ public record HoldingView(
     DateOnly? PriceDate,
     decimal MarketValue,
     decimal Cost,
-    decimal Pnl);
+    decimal Pnl,
+    // 定期定額（設定在固定支出）：例如「每月 6 號 9,000，從 玉山 扣款」；最近一次買進
+    string? Dca = null,
+    string? LastPurchase = null);
 
 public record GoalDto(int Id, string Name, decimal TargetAmount, DateOnly TargetDate, GoalScope Scope);
 

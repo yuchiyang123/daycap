@@ -144,6 +144,9 @@ public class AccountTransfer : IFact
     public int ToAccountId { get; set; }
     public decimal Amount { get; set; }
     public string? Note { get; set; }
+
+    /// <summary>系統自動產生的（固定支出設定成轉帳）：「fixed:{項目Id}:{扣款日}」，同一筆只會產生一次。手動記的為 null。</summary>
+    public string? AutoKey { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int? ReplacesId { get; set; }
     public bool IsVoid { get; set; }

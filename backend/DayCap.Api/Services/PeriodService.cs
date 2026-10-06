@@ -173,6 +173,7 @@ public class PeriodService(
         var adjustments = (await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == period.UserId).ToListAsync(ct)).Active();
         var (debts, settlements) = await DebtMath.LoadAsync(db, period.UserId, ct);
         var prepayments = await InstallmentMath.PrepaymentsAsync(db, period.UserId, ct);
+        var autoTransfers = (await db.AccountTransfers.AsNoTracking().Where(t => t.UserId == period.UserId && t.AutoKey != null).ToListAsync(ct)).Active();
 
         List<ReconDiff> diffs = [];
         for (var iteration = 0; iteration < 5; iteration++)
@@ -187,7 +188,9 @@ public class PeriodService(
                             // 分帳的應收應付（§14）：代墊、收回、還款不是沒交代的差異
                             + DebtMath.NetFlow(debts, settlements, d => d > prev.Date && d <= r.Date)
                             // 分期提前還款（§15）：錢從資產出去、負債減少，不是花費
-                            - prepayments.Where(p => p.Date > prev.Date && p.Date <= r.Date).Sum(p => p.Amount);
+                            - prepayments.Where(p => p.Date > prev.Date && p.Date <= r.Date).Sum(p => p.Amount)
+                            // 固定支出自動轉進自己的帳戶（例如緊急預備金）：預算當成支出扣掉了，但淨額沒變
+                            + autoTransfers.Where(t => t.Date > prev.Date && t.Date <= r.Date).Sum(t => t.Amount);
                 next.Add(new ReconDiff(r.Id, r.Date, r.CreatedAt,
                     AccountService.Net(prev, types) + flows, AccountService.Net(r, types), r.UsePool));
             }

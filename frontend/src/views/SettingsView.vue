@@ -7,10 +7,10 @@ import PushSettings from '../components/PushSettings.vue'
 import SubItemsEditor from '../components/SubItemsEditor.vue'
 import TrustSettings from '../components/TrustSettings.vue'
 import { watch } from 'vue'
-import { estimateSettings } from '../api/endpoints'
+import { estimateSettings, getAssets } from '../api/endpoints'
 import type { PercentBase, SettingsEstimate } from '../api/types'
 import { deleteBeforeStart, getCalendar, getSettings, saveSettings, setDayOverride, logout } from '../api/endpoints'
-import type { BudgetMode, CalendarDayDto, CategoryDto, CategoryGroup, HolidayShift, SettingsDto, SettingsVersionSummary } from '../api/types'
+import type { BudgetMode, FixedItemDto, CalendarDayDto, CategoryDto, CategoryGroup, HolidayShift, SettingsDto, SettingsVersionSummary } from '../api/types'
 import { store, loadCurrentPeriod } from '../lib/store'
 import { dayLabel, groupLabel, money, parseDate, pct, shortDate } from '../lib/format'
 import { applyDesign, applyTheme, currentDesign, currentTheme, designs, type DesignChoice, type ThemeChoice } from '../lib/theme'
@@ -42,7 +42,7 @@ function applyView(v: { settings: SettingsDto; effectiveFrom: string; today: str
 // 設定和行事曆同時抓（以前一個接一個，要等兩趟）
 onMounted(async () => {
   try {
-    const [view] = await Promise.all([getSettings(), loadCalendar()])
+    const [view] = await Promise.all([getSettings(), loadCalendar(), loadAutoTargets()])
     applyView(view)
   } catch (e) {
     error.value = (e as Error).message
@@ -341,6 +341,28 @@ function pickTheme(t: ThemeChoice) {
   theme.value = t
   applyTheme(t)
 }
+// ---- 固定支出的自動轉帳 / 定期定額 ----
+const moneyAccounts = ref<{ id: number; name: string }[]>([])
+const dcaHoldings = ref<{ id: number; symbol: string; name: string }[]>([])
+async function loadAutoTargets() {
+  const a = await getAssets().catch(() => null)
+  moneyAccounts.value = (a?.cashAccounts ?? []).filter((x) => x.type !== 'CreditCard').map((x) => ({ id: x.id, name: x.name }))
+  // 手動填價格的標的抓不到當天收盤價，不能定期定額
+  dcaHoldings.value = (a?.holdings ?? []).filter((h) => h.manualPrice === null).map((h) => ({ id: h.id, symbol: h.symbol, name: h.name }))
+}
+function autoTarget(f: FixedItemDto): string {
+  if (f.toAccountId) return `a:${f.toAccountId}`
+  if (f.holdingId) return `h:${f.holdingId}`
+  return 'none'
+}
+function setAutoTarget(f: FixedItemDto, v: string) {
+  f.toAccountId = v.startsWith('a:') ? Number(v.slice(2)) : null
+  f.holdingId = v.startsWith('h:') ? Number(v.slice(2)) : null
+  if (v === 'none') f.fromAccountId = null
+  else if (!f.fromAccountId) f.fromAccountId = moneyAccounts.value.find((a) => `a:${a.id}` !== v)?.id ?? null
+  touch()
+}
+
 // 風格（整套外觀）：存在這台裝置，預設是原本的
 const design = ref<DesignChoice>(currentDesign())
 function pickDesign() {
@@ -550,6 +572,27 @@ async function signOut() {
               </div>
               <label class="check fx-sub"><input v-model="f.isSubscription" type="checkbox" @change="touch" /><span class="sub-label">訂閱</span></label>
               <button type="button" class="btn quiet sm danger fx-del" @click="c.fixedItems.splice(fi, 1); touch()">移除</button>
+              <div class="fx-auto">
+                <label class="auto-field">
+                  扣款日自動
+                  <select :value="autoTarget(f)" class="select compact" aria-label="扣款日自動做什麼" @change="setAutoTarget(f, ($event.target as HTMLSelectElement).value)">
+                    <option value="none">不自動（只扣預算）</option>
+                    <optgroup v-if="moneyAccounts.length" label="轉到帳戶">
+                      <option v-for="a in moneyAccounts" :key="`a${a.id}`" :value="`a:${a.id}`">轉到 {{ a.name }}</option>
+                    </optgroup>
+                    <optgroup v-if="dcaHoldings.length" label="定期定額（當天收盤價買進）">
+                      <option v-for="h in dcaHoldings" :key="`h${h.id}`" :value="`h:${h.id}`">定期定額 {{ h.symbol }} {{ h.name }}</option>
+                    </optgroup>
+                  </select>
+                </label>
+                <label v-if="autoTarget(f) !== 'none'" class="auto-field">
+                  從哪個帳戶扣
+                  <select v-model="f.fromAccountId" class="select compact" aria-label="從哪個帳戶扣款" @change="touch">
+                    <option :value="null" disabled>選帳戶</option>
+                    <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+                  </select>
+                </label>
+              </div>
             </div>
             <p v-for="f in c.fixedItems.filter((x) => x.activeFrom)" :key="`af-${f.id}`" class="muted small">
               「{{ f.name }}」從 {{ shortDate(f.activeFrom!) }} 那期開始算
@@ -870,6 +913,25 @@ async function signOut() {
   gap: 8px;
   align-items: center;
 }
+/* 扣款日自動轉帳 / 定期定額：在該項目下面一整行 */
+.fx-auto {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 0 0 6px;
+}
+.auto-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.auto-field .select {
+  width: auto;
+  max-width: 260px;
+}
 .st-head {
   font-size: 12px;
 }
@@ -1035,6 +1097,7 @@ async function signOut() {
       'name name'
       'amt due'
       'cycle cycle'
+      'auto auto'
       'sub del';
     padding-bottom: 10px;
     border-bottom: 1px solid var(--line);
@@ -1054,6 +1117,18 @@ async function signOut() {
   .fx-sub {
     grid-area: sub;
     align-items: center;
+  }
+  .fx-auto {
+    grid-area: auto;
+    flex-direction: column;
+  }
+  .auto-field {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .auto-field .select {
+    max-width: none;
+    width: 100%;
   }
   .fx-del {
     grid-area: del;

@@ -40,6 +40,7 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
     public DbSet<InstallmentPrepayment> InstallmentPrepayments => Set<InstallmentPrepayment>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<Trip> Trips => Set<Trip>();
+    public DbSet<HoldingPurchase> HoldingPurchases => Set<HoldingPurchase>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder c)
     {
@@ -141,6 +142,8 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
         b.Entity<DebtSettlement>().HasIndex(x => new { x.UserId, x.DebtId });
         b.Entity<Installment>().HasIndex(x => x.UserId);
         b.Entity<Trip>().HasIndex(x => x.UserId);
+        b.Entity<HoldingPurchase>().HasIndex(x => new { x.UserId, x.AutoKey }).IsUnique();
+        b.Entity<AccountTransfer>().HasIndex(x => new { x.UserId, x.AutoKey }).IsUnique();
         b.Entity<UserSession>(e =>
         {
             e.HasIndex(x => x.DeviceId).IsUnique();

@@ -48,6 +48,8 @@ builder.Services.AddScoped<IUserDataService, UserDataService>();
 builder.Services.AddScoped<ITripService, TripService>();
 builder.Services.AddScoped<IRunwayService, RunwayService>();
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<DayCap.Api.Services.Push.NightlyPushWorker>();
+builder.Services.AddScoped<IAutoMoneyService, AutoMoneyService>();
+if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<AutoMoneyWorker>();
 
 builder.Services.AddHttpClient(CalendarService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient(QuoteService.HttpClientName, c =>

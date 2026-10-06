@@ -24,6 +24,16 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAccountServ
         var holdings = await db.Holdings.Where(h => h.UserId == userId).OrderBy(h => h.SortOrder).ToListAsync(ct);
         var goals = await db.Goals.Where(g => g.UserId == userId).OrderBy(g => g.SortOrder).ToListAsync(ct);
 
+        // 定期定額設定（最新的設定版本）與最近一次買進
+        var versions = await db.SettingsVersions.AsNoTracking().Where(v => v.UserId == userId).ToListAsync(ct);
+        var dcaItems = versions.Count == 0
+            ? []
+            : new SettingsTimeline(versions).Latest.Doc.Categories.SelectMany(c => c.FixedItems)
+                .Where(f => f.IsAuto && f.HoldingId is not null && f.IsActive).ToList();
+        var accountNames = accountsView.Accounts.ToDictionary(a => a.Id, a => a.Name);
+        var lastBuys = (await db.HoldingPurchases.AsNoTracking().Where(p => p.UserId == userId).ToListAsync(ct)).Active()
+            .GroupBy(p => p.HoldingId).ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.TradeDate).First());
+
         var quoteMap = await quotes.GetQuotesAsync(
             holdings.Where(h => h.ManualPrice is null).Select(h => h.Symbol).ToList(), refreshQuotes, ct);
 
@@ -35,8 +45,16 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAccountServ
             var value = price is { } p ? Math.Round(p * h.Shares, 0, MidpointRounding.AwayFromZero) : 0m;
             var cost = Math.Round(h.AvgCost * h.Shares, 0, MidpointRounding.AwayFromZero);
             var name = string.IsNullOrWhiteSpace(h.Name) ? q?.Name ?? h.Symbol : h.Name;
+            var dca = dcaItems.FirstOrDefault(f => f.HoldingId == h.Id);
+            var dcaText = dca is null ? null
+                : $"定期定額：每月 {dca.DueDay} 號 {dca.Amount:N0}，從 {accountNames.GetValueOrDefault(dca.FromAccountId!.Value, "（帳戶已刪除）")} 扣款";
+            var last = lastBuys.GetValueOrDefault(h.Id);
+            var lastText = last is null ? null
+                : last.Shares > 0
+                    ? $"{last.TradeDate:M/d} 以收盤價 {last.Price:0.##} 買進 {last.Shares:0} 股，共 {last.Spent:N0}"
+                    : $"{last.TradeDate:M/d} 收盤價 {last.Price:0.##}，{last.Budget:N0} 不夠買 1 股";
             return new HoldingView(h.Id, h.Symbol, name, h.Shares, h.AvgCost, h.ManualPrice, price, source,
-                h.ManualPrice is null ? q?.TradeDate : null, value, cost, value - cost);
+                h.ManualPrice is null ? q?.TradeDate : null, value, cost, value - cost, dcaText, lastText);
         }).ToList();
 
         var cashTotal = accountsView.NetLiquid;

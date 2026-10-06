@@ -67,7 +67,10 @@ public record FixedItemDto(
     BillingCycle Cycle,
     int? BillingMonth,
     bool IsActive,
-    DateOnly? ActiveFrom);
+    DateOnly? ActiveFrom,
+    int? FromAccountId = null,
+    int? ToAccountId = null,
+    int? HoldingId = null);
 
 public record SettingsVersionSummary(int Id, DateOnly EffectiveFrom, DateTime CreatedAt, bool IsCorrection, string? Note);
 

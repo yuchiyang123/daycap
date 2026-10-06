@@ -9,10 +9,15 @@ namespace DayCap.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/assets")]
-public class AssetsController(IAssetService assets) : ControllerBase
+public class AssetsController(IAssetService assets, IAutoMoneyService auto) : ControllerBase
 {
+    /// <summary>打開資產頁時先補做到期的自動轉帳 / 定期定額，看到的就是最新的。</summary>
     [HttpGet]
-    public Task<AssetsView> Get([FromQuery] bool refresh, CancellationToken ct) => assets.GetAsync(User.GetUserId(), refresh, ct);
+    public async Task<AssetsView> Get([FromQuery] bool refresh, CancellationToken ct)
+    {
+        await auto.RunAsync(User.GetUserId(), ct);
+        return await assets.GetAsync(User.GetUserId(), refresh, ct);
+    }
 
     [HttpPut]
     public Task<AssetsView> Save(SaveAssetsRequest req, CancellationToken ct) => assets.SaveAsync(User.GetUserId(), req, ct);

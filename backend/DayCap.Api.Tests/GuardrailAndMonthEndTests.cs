@@ -195,6 +195,9 @@ public sealed class GuardrailAndMonthEndTests : IDisposable
 
     private sealed class NoQuotes : IQuoteService
     {
+        public Task<(DateOnly TradeDate, decimal Close)?> GetCloseOnOrAfterAsync(string symbol, DateOnly date, CancellationToken ct = default) =>
+            Task.FromResult<(DateOnly TradeDate, decimal Close)?>(null);
+
         public Task<Dictionary<string, PriceQuote>> GetQuotesAsync(IReadOnlyCollection<string> symbols, bool force, CancellationToken ct = default) =>
             Task.FromResult(new Dictionary<string, PriceQuote>());
     }

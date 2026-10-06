@@ -120,6 +120,10 @@ export interface FixedItemDto {
   billingMonth: number | null
   isActive: boolean
   activeFrom: string | null
+  /** 自動執行：從這個帳戶扣款，轉到 toAccountId，或定期定額買 holdingId（兩者擇一） */
+  fromAccountId?: number | null
+  toAccountId?: number | null
+  holdingId?: number | null
 }
 
 export interface CategoryDto {
@@ -562,6 +566,9 @@ export interface HoldingView extends HoldingDto {
   marketValue: number
   cost: number
   pnl: number
+  /** 定期定額說明（設定在固定支出），例如「定期定額：每月 6 號 9,000，從 玉山 扣款」 */
+  dca?: string | null
+  lastPurchase?: string | null
 }
 
 export interface GoalDto {
