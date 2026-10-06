@@ -43,7 +43,9 @@ public class MonthEndService(
             : new MonthEndSummary(existing.ClosedAt, existing.Result, existing.Decision, existing.CarryAmount, Message(existing.Result, existing.Decision));
 
         var openFrom = period.EndDate.AddDays(1 - OpenDaysBeforePayday);
-        var needsRecon = !await HasClosingReconciliationAsync(userId, period, ct);
+        // 帳戶只記儲蓄時，對帳不算差額，月結也就不需要先完整對帳
+        var savingsOnly = await db.Profiles.AsNoTracking().AnyAsync(p => p.UserId == userId && p.SavingsOnlyAccounts, ct);
+        var needsRecon = !savingsOnly && !await HasClosingReconciliationAsync(userId, period, ct);
         string? reason = null;
         if (existing is not null) reason = "這期已經月結。";
         else if (today < openFrom) reason = $"{openFrom:M/d}（發薪日前 {OpenDaysBeforePayday} 天）起才能月結。";

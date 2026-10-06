@@ -389,8 +389,8 @@ public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarServi
                 if (f.DueDay is < 1 or > 31) throw new ValidationException($"「{f.Name}」扣款日要在 1 到 31 之間。");
                 if (f.BillingMonth is < 1 or > 12) throw new ValidationException($"「{f.Name}」扣款月份要在 1 到 12 之間。");
                 if (f.ToAccountId is not null && f.HoldingId is not null) throw new ValidationException($"「{f.Name}」只能選轉到帳戶或定期定額其中一個。");
-                if ((f.ToAccountId is not null || f.HoldingId is not null) && f.FromAccountId is null)
-                    throw new ValidationException($"「{f.Name}」要選從哪個帳戶扣款。");
+                if (f.HoldingId is not null && f.FromAccountId is null)
+                    throw new ValidationException($"「{f.Name}」定期定額要選扣款帳戶。");
                 if (f.ToAccountId is not null && f.ToAccountId == f.FromAccountId) throw new ValidationException($"「{f.Name}」轉出和轉入不能是同一個帳戶。");
                 if ((f.ToAccountId is not null || f.HoldingId is not null) && f.DueDay is null)
                     throw new ValidationException($"「{f.Name}」要自動轉帳或定期定額，要填扣款日。");
@@ -409,7 +409,8 @@ public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarServi
                     s.Weight, s.WorkdayLock, s.HolidayLock, s.WorkdayFloor, s.HolidayFloor, s.HolidayWeight)).ToList(),
                 c.FixedItems.Select(f => new FixedItemDoc(f.Id, f.Name.Trim(), Math.Round(f.Amount, 0), f.DueDay, f.IsSubscription,
                     f.Cycle, f.Cycle == BillingCycle.Monthly ? null : f.BillingMonth ?? 1, f.IsActive, f.ActiveFrom,
-                    f.ToAccountId is null && f.HoldingId is null ? null : f.FromAccountId, f.ToAccountId, f.HoldingId)).ToList(),
+                    f.ToAccountId is null && f.HoldingId is null ? null : f.FromAccountId, f.ToAccountId, f.HoldingId,
+                    f.HoldingId is not null && f.FundedExternally == true ? true : null)).ToList(),
                 c.Mode == BudgetMode.Fixed ? null : c.UsePercent,
                 c.Mode == BudgetMode.Fixed || c.UsePercent ? null : Math.Round(c.Amount ?? 0, 0),
                 c.Floor,
@@ -462,7 +463,7 @@ public class SettingsService(DayCapDbContext db, IAppClock clock, ICalendarServi
             c.Slots.Select(s => new SlotDto(s.Id, s.Name, s.Start, s.WorkdayAmount, s.HolidayAmount,
                 s.Weight, s.WorkdayLock, s.HolidayLock, s.WorkdayFloor, s.HolidayFloor, s.HolidayWeight)).ToList(),
             c.FixedItems.Select(f => new FixedItemDto(f.Id, f.Name, f.Amount, f.DueDay, f.IsSubscription, f.Cycle, f.BillingMonth, f.IsActive, f.ActiveFrom,
-                f.FromAccountId, f.ToAccountId, f.HoldingId)).ToList(),
+                f.FromAccountId, f.ToAccountId, f.HoldingId, f.FundedExternally)).ToList(),
             c.IsPercent, c.Amount, c.Floor, c.Auto, c.SubItems
         )).ToList(),
         d.Base,

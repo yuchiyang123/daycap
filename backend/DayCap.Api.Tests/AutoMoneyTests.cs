@@ -149,6 +149,66 @@ public sealed class AutoMoneyTests : IDisposable
         await Assert.ThrowsAsync<Common.ValidationException>(() => _settings.SaveAsync("u", new SaveSettingsRequest(s with { Categories = cats }, null, null)));
     }
 
+    /// <summary>使用者實際的用法：只登記玉山，薪轉戶不登記；預備金從外部存進玉山，0050 錢先進玉山再扣。</summary>
+    private async Task SetupSavingsOnly()
+    {
+        _clock.Current = new DateOnly(2026, 10, 1);
+        var view = await _accounts.SaveAccountsAsync("u", [new AccountEdit(0, "玉山", AccountType.Bank, 60_000)]);
+        _savings = view.Accounts.Single().Id;
+        var h = new Holding { UserId = "u", Symbol = "0050", Name = "元大台灣50", Shares = 100, AvgCost = 100 };
+        _db.Holdings.Add(h);
+        await _db.SaveChangesAsync();
+        _holding = h.Id;
+        var s = (await _settings.GetAsync("u")).Settings;
+        var cats = s.Categories.Select(c => c with
+        {
+            FixedItems = c.FixedItems.Select(f => f.Name switch
+            {
+                "緊急預備金" => f with { DueDay = 6, FromAccountId = null, ToAccountId = _savings },
+                "0050 定期定額" => f with { Amount = 9_000, DueDay = 6, FromAccountId = _savings, HoldingId = _holding, FundedExternally = true },
+                _ => f,
+            }).ToList(),
+        }).ToList();
+        await _settings.SaveAsync("u", new SaveSettingsRequest(s with { Payday = new PaydayRule(1, HolidayShift.None), Categories = cats },
+            new DateOnly(2026, 10, 1), "測試設定"));
+        _clock.Current = new DateOnly(2026, 10, 7);
+        await _periods.GetCurrentAsync("u");
+    }
+
+    [Fact]
+    public async Task Money_from_an_unregistered_account_is_deposited_and_dca_keeps_only_the_change()
+    {
+        await SetupSavingsOnly();
+        _quotes.Close = (new DateOnly(2026, 10, 6), 116.5m);
+
+        Assert.Equal(2, await _auto.RunAsync("u"));
+        Assert.Equal(0, await _auto.RunAsync("u"));
+
+        // 玉山：60,000 ＋ 預備金 5,000 ＋ 0050 先存 9,000 − 買 77 股 8,971 ＝ 65,029
+        Assert.Equal(65_029, (await _accounts.BalancesAsync("u"))[_savings]);
+        Assert.Equal(177, (await _db.Holdings.SingleAsync()).Shares);
+    }
+
+    [Fact]
+    public async Task Savings_only_accounts_never_turn_a_reconciliation_into_a_pool_difference()
+    {
+        await SetupSavingsOnly();
+        var profile = await _db.Profiles.SingleAsync();
+        profile.SavingsOnlyAccounts = true;
+        await _db.SaveChangesAsync();
+        _clock.Current = new DateOnly(2026, 10, 3);
+        await _accounts.CreateReconciliationAsync("u", new CreateReconciliationRequest(_clock.Current, [new(_savings, 60_000)], true, "基準"));
+        _clock.Current = new DateOnly(2026, 10, 7);
+        var pool = (await _periods.GetCurrentAsync("u")).Pool.Balance;
+
+        // 薪水、花費都不經過玉山：以前這裡會算出一大筆差額，從待分配池扣掉
+        var r = await _accounts.CreateReconciliationAsync("u", new CreateReconciliationRequest(_clock.Current, [new(_savings, 74_000)], true, null));
+
+        Assert.Equal(0, r.Diff);
+        Assert.Equal(pool, (await _periods.GetCurrentAsync("u")).Pool.Balance);
+        Assert.Equal(74_000, (await _accounts.BalancesAsync("u"))[_savings]); // 餘額照樣更新
+    }
+
     private sealed class FakeQuotes : IQuoteService
     {
         public (DateOnly, decimal)? Close { get; set; }

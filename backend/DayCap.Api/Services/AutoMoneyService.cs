@@ -51,6 +51,7 @@ public class AutoMoneyService(DayCapDbContext db, ISettingsService settings, IQu
         var accounts = await db.CashAccounts.AsNoTracking().Where(a => a.UserId == userId && !a.IsArchived).Select(a => a.Id).ToListAsync(ct);
         var doneKeys = (await db.AccountTransfers.AsNoTracking().Where(t => t.UserId == userId && t.AutoKey != null).Select(t => t.AutoKey!).ToListAsync(ct))
             .Concat(await db.HoldingPurchases.AsNoTracking().Where(p => p.UserId == userId).Select(p => p.AutoKey).ToListAsync(ct))
+            .Concat(await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == userId && a.AutoKey != null).Select(a => a.AutoKey!).ToListAsync(ct))
             .ToHashSet();
 
         var created = 0;
@@ -61,18 +62,35 @@ public class AutoMoneyService(DayCapDbContext db, ISettingsService settings, IQu
             foreach (var charge in BudgetMath.FixedCharges(doc, d, d).Where(c => c.DueDate == d && c.FixedItemId is not null))
             {
                 var item = doc.Categories.SelectMany(c => c.FixedItems).First(f => f.Id == charge.FixedItemId);
-                if (!item.IsAuto || !accounts.Contains(item.FromAccountId!.Value)) continue;
+                if (!item.IsAuto) continue;
+                if (item.FromAccountId is { } src && !accounts.Contains(src)) continue;
 
                 if (item.ToAccountId is { } to)
                 {
-                    var key = $"fixed:{item.Id}:{d:yyyy-MM-dd}";
-                    if (doneKeys.Contains(key) || !accounts.Contains(to)) continue;
-                    db.AccountTransfers.Add(new AccountTransfer
+                    if (!accounts.Contains(to)) continue;
+                    if (item.FromAccountId is { } from)
                     {
-                        UserId = userId, Date = d, Kind = TransferKind.Transfer, FromAccountId = item.FromAccountId!.Value, ToAccountId = to,
-                        Amount = item.Amount, Note = $"自動：{item.Name}", AutoKey = key, CreatedAt = clock.UtcNow,
-                    });
-                    doneKeys.Add(key);
+                        var key = $"fixed:{item.Id}:{d:yyyy-MM-dd}";
+                        if (doneKeys.Contains(key)) continue;
+                        db.AccountTransfers.Add(new AccountTransfer
+                        {
+                            UserId = userId, Date = d, Kind = TransferKind.Transfer, FromAccountId = from, ToAccountId = to,
+                            Amount = item.Amount, Note = $"自動：{item.Name}", AutoKey = key, CreatedAt = clock.UtcNow,
+                        });
+                        doneKeys.Add(key);
+                    }
+                    else
+                    {
+                        // 錢從外部（沒登記的帳戶）存進來
+                        var key = $"deposit:{item.Id}:{d:yyyy-MM-dd}";
+                        if (doneKeys.Contains(key)) continue;
+                        db.AssetAdjustments.Add(new AssetAdjustment
+                        {
+                            UserId = userId, CashAccountId = to, Date = d, Amount = item.Amount, Note = $"自動存入：{item.Name}",
+                            Source = "auto", AutoKey = key, CreatedAt = clock.UtcNow,
+                        });
+                        doneKeys.Add(key);
+                    }
                     created++;
                 }
                 else if (item.HoldingId is { } holdingId)
@@ -100,6 +118,15 @@ public class AutoMoneyService(DayCapDbContext db, ISettingsService settings, IQu
         var close = await quotes.GetCloseOnOrAfterAsync(holding.Symbol, due, ct);
         if (close is not { } c || c.TradeDate > today) return false;
         // 今天的收盤價要等收盤後才有（約 14:00）；資料源有了就代表已經收盤
+            if (item.FundedExternally == true)
+            {
+                // 錢先從外部存進扣款帳戶（例如薪轉戶轉進玉山），再從扣款帳戶買
+                db.AssetAdjustments.Add(new AssetAdjustment
+                {
+                    UserId = userId, CashAccountId = item.FromAccountId!.Value, Date = c.TradeDate, Amount = item.Amount,
+                    Note = $"自動存入：{item.Name}", Source = "auto", AutoKey = $"deposit:{item.Id}:{due:yyyy-MM-dd}", CreatedAt = clock.UtcNow,
+                });
+            }
         var shares = Math.Floor(item.Amount / c.Close);
         var spent = Math.Round(shares * c.Close, 0, MidpointRounding.AwayFromZero);
 

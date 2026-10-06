@@ -108,14 +108,17 @@ public record FixedItemDoc(
     int? BillingMonth,
     bool IsActive,
     DateOnly? ActiveFrom,
-    // 自動執行（扣款日當天）：從 FromAccountId 轉到 ToAccountId（例如存進本金戶），
-    // 或用當天收盤價定期定額買進 HoldingId 這檔股票。兩者擇一，都空＝只是預算上的固定支出。
+    // 自動執行（扣款日當天），兩種擇一，都空＝只是預算上的固定支出：
+    // - 存進 ToAccountId：FromAccountId 有值＝從那個帳戶轉過去；null＝錢從外部（沒登記的帳戶，例如薪轉戶）存進來。
+    // - 定期定額 HoldingId：從 FromAccountId（扣款帳戶，必填）用當天收盤價買進；
+    //   FundedExternally＝錢先從外部存進扣款帳戶再扣（例如薪轉戶轉進玉山、0050 從玉山扣）。
     int? FromAccountId = null,
     int? ToAccountId = null,
-    int? HoldingId = null)
+    int? HoldingId = null,
+    bool? FundedExternally = null)
 {
     [System.Text.Json.Serialization.JsonIgnore]
-    public bool IsAuto => FromAccountId is not null && (ToAccountId is not null || HoldingId is not null);
+    public bool IsAuto => ToAccountId is not null || (HoldingId is not null && FromAccountId is not null);
 }
 
 public static class SettingsJson

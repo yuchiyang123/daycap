@@ -19,6 +19,8 @@ export interface Me {
   onboarded: boolean
   /** 看過的一次性提示 */
   seenTips: string[]
+  /** 帳戶只記儲蓄：對帳只更新餘額，不算差額 */
+  savingsOnlyAccounts?: boolean
 }
 
 // ---- onboarding（§20）----
@@ -124,6 +126,8 @@ export interface FixedItemDto {
   fromAccountId?: number | null
   toAccountId?: number | null
   holdingId?: number | null
+  /** 定期定額：錢先從外部（沒登記的帳戶）存進扣款帳戶再扣 */
+  fundedExternally?: boolean | null
 }
 
 export interface CategoryDto {

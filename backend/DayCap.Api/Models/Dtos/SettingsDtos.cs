@@ -70,7 +70,8 @@ public record FixedItemDto(
     DateOnly? ActiveFrom,
     int? FromAccountId = null,
     int? ToAccountId = null,
-    int? HoldingId = null);
+    int? HoldingId = null,
+    bool? FundedExternally = null);
 
 public record SettingsVersionSummary(int Id, DateOnly EffectiveFrom, DateTime CreatedAt, bool IsCorrection, string? Note);
 
@@ -91,4 +92,6 @@ public record DayOverrideRequest(bool? IsHoliday);
 
 public record CalendarDayDto(DateOnly Date, bool IsHoliday, string? Name);
 
-public record MeDto(string UserId, string? UserName, bool Onboarded = true, List<string>? SeenTips = null);
+public record MeDto(string UserId, string? UserName, bool Onboarded = true, List<string>? SeenTips = null, bool SavingsOnlyAccounts = false);
+
+public record PreferencesRequest(bool SavingsOnlyAccounts);

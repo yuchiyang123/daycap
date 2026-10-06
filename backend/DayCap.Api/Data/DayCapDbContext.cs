@@ -144,6 +144,7 @@ public class DayCapDbContext(DbContextOptions<DayCapDbContext> options) : DbCont
         b.Entity<Trip>().HasIndex(x => x.UserId);
         b.Entity<HoldingPurchase>().HasIndex(x => new { x.UserId, x.AutoKey }).IsUnique();
         b.Entity<AccountTransfer>().HasIndex(x => new { x.UserId, x.AutoKey }).IsUnique();
+        b.Entity<AssetAdjustment>().HasIndex(x => new { x.UserId, x.AutoKey }).IsUnique();
         b.Entity<UserSession>(e =>
         {
             e.HasIndex(x => x.DeviceId).IsUnique();

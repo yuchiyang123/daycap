@@ -358,8 +358,16 @@ function autoTarget(f: FixedItemDto): string {
 function setAutoTarget(f: FixedItemDto, v: string) {
   f.toAccountId = v.startsWith('a:') ? Number(v.slice(2)) : null
   f.holdingId = v.startsWith('h:') ? Number(v.slice(2)) : null
-  if (v === 'none') f.fromAccountId = null
-  else if (!f.fromAccountId) f.fromAccountId = moneyAccounts.value.find((a) => `a:${a.id}` !== v)?.id ?? null
+  if (v.startsWith('a:')) {
+    // 存進帳戶：預設錢從外部來（薪轉戶通常沒登記）
+    if (f.fromAccountId === f.toAccountId) f.fromAccountId = null
+    f.fundedExternally = null
+  } else if (v.startsWith('h:')) {
+    f.fromAccountId ??= moneyAccounts.value[0]?.id ?? null
+  } else {
+    f.fromAccountId = null
+    f.fundedExternally = null
+  }
   touch()
 }
 
@@ -585,13 +593,28 @@ async function signOut() {
                     </optgroup>
                   </select>
                 </label>
-                <label v-if="autoTarget(f) !== 'none'" class="auto-field">
-                  從哪個帳戶扣
-                  <select v-model="f.fromAccountId" class="select compact" aria-label="從哪個帳戶扣款" @change="touch">
-                    <option :value="null" disabled>選帳戶</option>
-                    <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+                <!-- 存進帳戶：錢從哪來（外部＝沒登記的帳戶，例如薪轉戶） -->
+                <label v-if="f.toAccountId" class="auto-field">
+                  錢從哪來
+                  <select v-model="f.fromAccountId" class="select compact" aria-label="錢從哪來" @change="touch">
+                    <option :value="null">外部（沒登記的帳戶，例如薪轉戶）</option>
+                    <option v-for="a in moneyAccounts.filter((x) => x.id !== f.toAccountId)" :key="a.id" :value="a.id">從 {{ a.name }} 轉過去</option>
                   </select>
                 </label>
+                <!-- 定期定額：扣款帳戶，以及錢是不是先從外部存進來 -->
+                <template v-if="f.holdingId">
+                  <label class="auto-field">
+                    扣款帳戶
+                    <select v-model="f.fromAccountId" class="select compact" aria-label="扣款帳戶" @change="touch">
+                      <option :value="null" disabled>選帳戶</option>
+                      <option v-for="a in moneyAccounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+                    </select>
+                  </label>
+                  <label class="check auto-check">
+                    <input :checked="!!f.fundedExternally" type="checkbox" @change="f.fundedExternally = ($event.target as HTMLInputElement).checked || null; touch()" />
+                    <span>錢先從外部存進扣款帳戶<span class="hint">例如薪轉戶每月轉進玉山，0050 再從玉山扣</span></span>
+                  </label>
+                </template>
               </div>
             </div>
             <p v-for="f in c.fixedItems.filter((x) => x.activeFrom)" :key="`af-${f.id}`" class="muted small">
@@ -930,7 +953,11 @@ async function signOut() {
 }
 .auto-field .select {
   width: auto;
-  max-width: 260px;
+  max-width: 280px;
+}
+.auto-check {
+  font-size: 13px;
+  align-items: center;
 }
 .st-head {
   font-size: 12px;

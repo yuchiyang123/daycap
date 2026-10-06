@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { loadCurrentPeriod, store } from '../lib/store'
+import { api } from '../api/http'
+import type { Me } from '../api/types'
 import Skeleton from '../components/Skeleton.vue'
 import { computed, onActivated, onMounted, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
@@ -112,6 +115,18 @@ function addGoal() {
   const d = new Date()
   d.setFullYear(d.getFullYear() + 1)
   goals.value.push({ id: 0, name: '', targetAmount: 100000, targetDate: `${d.getFullYear()}-12-31`, scope: 'All' })
+}
+
+// ---- 帳戶只記儲蓄 ----
+const savingPref = ref(false)
+async function toggleSavingsOnly(on: boolean) {
+  savingPref.value = true
+  try {
+    store.me = await api<Me>('/api/me/preferences', { method: 'PUT', body: { savingsOnlyAccounts: on } })
+    await loadCurrentPeriod(true) // 對帳差額會重算，待分配池跟著變
+  } finally {
+    savingPref.value = false
+  }
 }
 </script>
 
@@ -249,6 +264,13 @@ function addGoal() {
             <button type="button" class="btn sm primary" :disabled="data.cashAccounts.length === 0" @click="sheet = 'reconcile'">對帳</button>
           </span>
         </h2>
+        <label class="check savings-only">
+          <input :checked="!!store.me?.savingsOnlyAccounts" type="checkbox" :disabled="savingPref" @change="toggleSavingsOnly(($event.target as HTMLInputElement).checked)" />
+          <span>
+            帳戶只記儲蓄
+            <span class="hint">薪轉戶、生活帳戶沒有登記的話打開：對帳只更新餘額，不拿收入和花費去算差額，待分配池不會被對帳扣掉</span>
+          </span>
+        </label>
         <div class="panel">
           <ul class="list">
             <li v-for="c in data.cashAccounts" :key="c.id" class="acct">
@@ -460,5 +482,8 @@ function addGoal() {
   font-size: 12px;
   color: var(--muted);
   white-space: normal;
+}
+.savings-only {
+  font-size: 14px;
 }
 </style>

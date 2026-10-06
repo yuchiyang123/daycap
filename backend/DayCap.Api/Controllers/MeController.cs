@@ -20,7 +20,18 @@ public class MeController(ISettingsService settings, IOnboardingService onboardi
     public async Task<MeDto> Get(CancellationToken ct)
     {
         var profile = await settings.EnsureProfileAsync(User.GetUserId(), ct);
-        return new MeDto(User.GetUserId(), User.GetUserName(), profile.OnboardedAt is not null, OnboardingService.SeenTips(profile));
+        return new MeDto(User.GetUserId(), User.GetUserName(), profile.OnboardedAt is not null, OnboardingService.SeenTips(profile),
+            profile.SavingsOnlyAccounts);
+    }
+
+    /// <summary>個人偏好（目前只有「帳戶只記儲蓄」）。</summary>
+    [HttpPut("preferences")]
+    public async Task<MeDto> SavePreferences(PreferencesRequest req, [FromServices] Data.DayCapDbContext db, CancellationToken ct)
+    {
+        var profile = await settings.EnsureProfileAsync(User.GetUserId(), ct);
+        profile.SavingsOnlyAccounts = req.SavingsOnlyAccounts;
+        await db.SaveChangesAsync(ct);
+        return await Get(ct);
     }
 
     /// <summary>一次性提示（§20.9）看過了。</summary>

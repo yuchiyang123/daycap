@@ -63,6 +63,12 @@ public class UserProfile
     /// <summary>「登出其他所有裝置」的時間（§21.3）：這之前發的 token 都不能用（按按鈕的那個除外）。</summary>
     public DateTime? TokensValidAfter { get; set; }
 
+    /// <summary>
+    /// 帳戶只記儲蓄：薪轉戶、生活帳戶沒有登記，所以對帳不能拿收入和每天的花費去推算差額——
+    /// 對帳只更新餘額，不算差額、不動待分配池；月結也不要求先完整對帳。
+    /// </summary>
+    public bool SavingsOnlyAccounts { get; set; }
+
     // ---- 舊欄位（已不使用）：改存在設定版本裡，保留給舊資料匯入 ----
     public int MonthlyIncome { get; set; }
 

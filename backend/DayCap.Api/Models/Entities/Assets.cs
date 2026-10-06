@@ -93,6 +93,9 @@ public class AssetAdjustment : IFact
     /// <summary>護欄選「從存款吸收」時由那筆回報產生（刪回報時一起作廢）。</summary>
     public int? SourceEntryId { get; set; }
 
+    /// <summary>固定支出自動存入（錢從外部來）：「deposit:{項目}:{日期}」，同一期只做一次。</summary>
+    public string? AutoKey { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public int? ReplacesId { get; set; }

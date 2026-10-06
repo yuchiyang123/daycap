@@ -165,6 +165,8 @@ public class PeriodService(
         if (extraRecon is not null) recons.Add(extraRecon);
         var full = recons.Where(r => r.IsFull).OrderBy(r => r.Date).ThenBy(r => r.CreatedAt).ToList();
         var inPeriod = full.Where(r => r.Date >= period.StartDate && r.Date <= period.EndDate).ToList();
+        // 帳戶只記儲蓄：收入和花費不經過登記的帳戶，推算差額沒有意義 → 對帳只是更新餘額
+        if (await db.Profiles.AsNoTracking().AnyAsync(p => p.UserId == period.UserId && p.SavingsOnlyAccounts, ct)) inPeriod.Clear();
 
         var view = await DecorateAsync(Run([]), period, ct);
         if (inPeriod.Count == 0 || depth > 2) return view;

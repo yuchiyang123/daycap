@@ -47,7 +47,8 @@ public class AssetService(DayCapDbContext db, IQuoteService quotes, IAccountServ
             var name = string.IsNullOrWhiteSpace(h.Name) ? q?.Name ?? h.Symbol : h.Name;
             var dca = dcaItems.FirstOrDefault(f => f.HoldingId == h.Id);
             var dcaText = dca is null ? null
-                : $"定期定額：每月 {dca.DueDay} 號 {dca.Amount:N0}，從 {accountNames.GetValueOrDefault(dca.FromAccountId!.Value, "（帳戶已刪除）")} 扣款";
+                : $"定期定額：每月 {dca.DueDay} 號 {dca.Amount:N0}，從 {accountNames.GetValueOrDefault(dca.FromAccountId!.Value, "（帳戶已刪除）")} 扣款"
+                  + (dca.FundedExternally == true ? "（錢先從外部存進來）" : "");
             var last = lastBuys.GetValueOrDefault(h.Id);
             var lastText = last is null ? null
                 : last.Shares > 0
