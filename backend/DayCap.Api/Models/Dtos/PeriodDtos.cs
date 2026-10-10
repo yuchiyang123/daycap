@@ -115,7 +115,9 @@ public record EntryView(
     string? SubItem = null,
     // 外幣（§17）
     string? Currency = null,
-    decimal? ForeignAmount = null);
+    decimal? ForeignAmount = null,
+    // 逐筆加的明細
+    List<decimal>? Parts = null);
 
 public record FixedChargeView(int? FixedItemId, int CategoryId, string Name, decimal Amount, DateOnly? DueDate, bool IsSubscription);
 
@@ -149,7 +151,9 @@ public record CreateEntryRequest(
     decimal? ForeignAmount = null,
     decimal? FxRate = null,
     // 發生當地的時區（§3.3、§17），例如 Asia/Tokyo；只記錄
-    string? TimeZoneId = null);
+    string? TimeZoneId = null,
+    // 逐筆加：這個時段到目前為止的每一筆（有值時金額＝加總，一律當實際價格）
+    List<decimal>? Parts = null);
 
 /// <summary>回報時順便把它登記成訂閱：下個週期起變成固定支出。</summary>
 public record SubscriptionRequest(string Name, int TargetCategoryId, BillingCycle Cycle, int? DueDay);

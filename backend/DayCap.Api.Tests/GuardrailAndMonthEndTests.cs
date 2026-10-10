@@ -115,6 +115,28 @@ public sealed class GuardrailAndMonthEndTests : IDisposable
     }
 
     [Fact]
+    public async Task A_slot_can_be_reported_piece_by_piece_and_the_pieces_add_up()
+    {
+        var (view, food, lunch) = await Setup();
+        CreateEntryRequest Parts(params decimal[] p) =>
+            new(_clock.Current, food.CategoryId, lunch.SlotId, EntryInputMode.Overage, 0, true, null, null, Parts: [.. p]);
+
+        await _entries.CreateAsync("u", view.Id, Parts(16));
+        await _entries.CreateAsync("u", view.Id, Parts(16, 20));
+        var after = await _entries.CreateAsync("u", view.Id, Parts(16, 20, 35));
+
+        var slot = after.Days.Single(d => d.Date == _clock.Current).Slots.Single(s => s.SlotId == lunch.SlotId);
+        Assert.Equal(71, slot.Actual);   // 加總；一律當實際價格（就算請求寫的是超支模式）
+        var entry = after.Entries.Single(e => e.Id == slot.EntryId);
+        Assert.Equal([16m, 20m, 35m], entry.Parts);
+        Assert.Single(after.Entries.Where(e => e.SlotId == lunch.SlotId)); // 同一個時段只有一筆有效的回報
+
+        // 刪掉其中一筆＝用剩下的重新存
+        var fixedUp = await _entries.CreateAsync("u", view.Id, Parts(16, 35));
+        Assert.Equal(51, fixedUp.Days.Single(d => d.Date == _clock.Current).Slots.Single(s => s.SlotId == lunch.SlotId).Actual);
+    }
+
+    [Fact]
     public async Task All_zero_today_reports_every_unreported_slot_as_nothing_spent()
     {
         var (view, _, _) = await Setup();

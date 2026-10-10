@@ -318,6 +318,8 @@ export interface EntryView {
   subItem?: string | null
   currency?: string | null
   foreignAmount?: number | null
+  /** 逐筆加的明細；null＝一次輸入 */
+  parts?: number[] | null
 }
 
 export type ShortfallChoice = 'Pool' | 'NextPeriod' | 'Split' | 'Savings'
@@ -446,6 +448,8 @@ export interface CreateEntryRequest {
   fxRate?: number | null
   /** 發生當地的時區，例如 Asia/Tokyo */
   timeZoneId?: string | null
+  /** 逐筆加：這個時段到目前為止的每一筆，金額＝加總 */
+  parts?: number[] | null
 }
 
 export interface EntryPreview {

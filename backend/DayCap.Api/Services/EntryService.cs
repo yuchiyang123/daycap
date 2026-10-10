@@ -503,6 +503,16 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
                   ?? throw new ValidationException("這個週期沒有這個分類。");
         if (cat.Mode == BudgetMode.Fixed) throw new ValidationException($"「{cat.Name}」是鎖定的固定支出，不能回報。");
         var amount = Math.Round(req.Amount, 0);
+        // 逐筆加：金額＝每一筆的加總，一律是實際價格
+        string? parts = null;
+        if (req.Parts is { Count: > 0 } list)
+        {
+            if (list.Count > 50) throw new ValidationException("一個時段最多記 50 筆。");
+            if (list.Any(p => p < 0 || p > 1_000_000)) throw new ValidationException("每一筆的金額要在 0 到 1,000,000 之間。");
+            var rounded = list.Select(p => Math.Round(p, 0)).ToList();
+            amount = rounded.Sum();
+            parts = string.Join(",", rounded.Select(p => p.ToString("0", System.Globalization.CultureInfo.InvariantCulture)));
+        }
         // 外幣（§17）：匯率由使用者填（來源未定，先用手動），採用回報當下的值，換算成台幣記帳
         string? currency = null;
         if (req.ForeignAmount is { } foreign)
@@ -515,7 +525,7 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
         }
         if (Math.Abs(amount) > 10_000_000) throw new ValidationException("金額超出範圍。");
 
-        var inputMode = req.InputMode;
+        var inputMode = parts is null ? req.InputMode : EntryInputMode.Actual;
         if (req.SlotId is null || cat.Mode == BudgetMode.Envelope)
         {
             // 沒有時段就沒有「預算」可比，輸入的一定是實際價格。
@@ -536,6 +546,7 @@ public class EntryService(DayCapDbContext db, IPeriodService periods, ISettingsS
             UsePool = req.UsePool,
             Note = string.IsNullOrEmpty(note) ? null : note,
             SubItem = req.SubItem?.Trim() is { Length: > 0 } sub ? sub[..Math.Min(sub.Length, 30)] : null,
+            Parts = parts,
             Currency = currency,
             ForeignAmount = currency is null ? null : req.ForeignAmount,
             FxRate = currency is null ? null : req.FxRate,

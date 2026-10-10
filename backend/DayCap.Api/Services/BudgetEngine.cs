@@ -265,6 +265,11 @@ public static class BudgetEngine
             plan.Warnings);
     }
 
+    private static List<decimal>? ParseParts(string? parts) =>
+        string.IsNullOrEmpty(parts)
+            ? null
+            : parts.Split(',').Select(p => decimal.Parse(p, System.Globalization.CultureInfo.InvariantCulture)).ToList();
+
     private sealed record Event(DateTime At, int Order, int Id, Entry? Entry, PoolTransfer? Transfer, TodayLowering? Lowering, ReconDiff? Recon);
 
     private static ReconciliationView ApplyReconciliation(
@@ -332,7 +337,7 @@ public static class BudgetEngine
             lines.Add(new PoolLine(e.Date, -over, "EnvelopeOver", $"{cat.Name}超過月額度", e.Id, null));
         }
         return new EntryView(e.Id, e.Date, cat.CategoryId, cat.Name, null, null, e.InputMode, e.InputAmount,
-            actual, 0, actual, e.UsePool, 0, 0, 0, 0, envelopeOver, e.Note, e.IsSubscription, e.CreatedAt, 0, 0, e.JarCovered, e.JarId, e.SubItem, e.Currency, e.ForeignAmount);
+            actual, 0, actual, e.UsePool, 0, 0, 0, 0, envelopeOver, e.Note, e.IsSubscription, e.CreatedAt, 0, 0, e.JarCovered, e.JarId, e.SubItem, e.Currency, e.ForeignAmount, ParseParts(e.Parts));
     }
 
     private static EntryView ApplyDaily(
@@ -402,7 +407,7 @@ public static class BudgetEngine
 
         return new EntryView(e.Id, e.Date, cat.CategoryId, cat.Name, e.SlotId, slotName, e.InputMode, e.InputAmount,
             actual, planned, diff, e.UsePool, fromPool, spread, spreadSlots, unabsorbed, 0, e.Note, e.IsSubscription, e.CreatedAt,
-            spreadDays, spreadDays > 0 ? Math.Round(spread / spreadDays, 0) : 0, e.JarCovered, e.JarId, e.SubItem, e.Currency, e.ForeignAmount);
+            spreadDays, spreadDays > 0 ? Math.Round(spread / spreadDays, 0) : 0, e.JarCovered, e.JarId, e.SubItem, e.Currency, e.ForeignAmount, ParseParts(e.Parts));
     }
 
     /// <summary>

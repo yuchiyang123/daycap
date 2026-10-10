@@ -96,6 +96,9 @@ public class Entry : IFact
 
     public decimal JarCovered { get; set; }
 
+    /// <summary>逐筆加的明細（例如飲料：早上 16、中午 20、晚上 35 → "16,20,35"）；InputAmount 是加總。null＝一次輸入。</summary>
+    public string? Parts { get; set; }
+
     public DateTime? OccurredAtUtc { get; set; }
     public string? TimeZoneId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

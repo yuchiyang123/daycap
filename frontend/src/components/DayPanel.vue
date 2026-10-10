@@ -37,6 +37,14 @@ function status(s: SlotView): { text: string; tone: string } {
   if (s.actual === null) {
     return props.day.status === 'future' ? { text: '還沒到', tone: 'muted' } : { text: '照預算', tone: 'muted' }
   }
+  const parts = period.value.entries.find((e) => e.id === s.entryId)?.parts
+  if (parts && parts.length > 1) {
+    const left = s.planned - s.actual
+    return {
+      text: `${parts.map((p) => money(p)).join(' + ')} = ${money(s.actual)}・${left >= 0 ? `還剩 ${money(left)}` : `超支 ${money(-left)}`}`,
+      tone: left >= 0 ? 'ink-2' : 'bad',
+    }
+  }
   const diff = s.actual - s.planned
   if (diff === 0) return { text: `實際 ${money(s.actual)}・剛好`, tone: 'ink-2' }
   return diff > 0
