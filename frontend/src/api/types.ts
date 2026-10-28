@@ -260,6 +260,8 @@ export interface CategoryView {
   projected: number
   /** 從待分配池分配進來的額度（budget 已包含） */
   allocated: number
+  /** 回報跟待分配池的淨流量：正＝少花轉進池子，負＝超支由池子補。實際額度＝budget − toPool */
+  toPool?: number
 }
 
 export interface SlotView {

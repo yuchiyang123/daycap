@@ -11,6 +11,7 @@ const views = {
   assets: () => import('./views/AssetsView.vue'),
   settings: () => import('./views/SettingsView.vue'),
   monthEnd: () => import('./views/MonthEndView.vue'),
+  report: () => import('./views/ReportView.vue'),
 }
 
 export function prefetchViews() {
@@ -27,6 +28,7 @@ export const router = createRouter({
     { path: '/month', component: views.month, meta: { needsPeriod: true } },
     { path: '/ledger', component: views.ledger, meta: { needsPeriod: true } },
     { path: '/overview', component: views.overview, meta: { needsPeriod: true } },
+    { path: '/report', component: views.report, meta: { needsPeriod: true } },
     { path: '/month-end/:periodId', component: views.monthEnd },
     { path: '/assets', component: views.assets },
     // 設定頁沒有本期也要能用（還沒到開始日期時就是在這裡設定）

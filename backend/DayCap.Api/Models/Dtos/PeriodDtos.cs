@@ -60,7 +60,10 @@ public record CategoryView(
     decimal PlannedRemaining,
     decimal Projected,
     // 從待定區分配進來、加在額度上的金額（Budget 已包含）
-    decimal Allocated);
+    decimal Allocated,
+    // 這個分類的回報跟待分配池之間的淨流量：正＝少花轉進池子，負＝超支由池子補。
+    // 實際額度＝Budget − ToPool（設定裡的額度不變）。
+    decimal ToPool = 0);
 
 public record DayView(
     DateOnly Date,

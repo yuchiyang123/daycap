@@ -3,6 +3,10 @@ import { computed, ref } from 'vue'
 import AllocationBar, { type Segment } from '../charts/AllocationBar.vue'
 import LineChart, { type Series } from '../charts/LineChart.vue'
 import Meter from '../charts/Meter.vue'
+import Donut from '../charts/Donut.vue'
+import ColumnChart from '../charts/ColumnChart.vue'
+import { spendByCategory, spendBySlot, weeklyDaily } from '../lib/reportData'
+import { RouterLink } from 'vue-router'
 import { addTransfer, deleteTransfer, setNextPayday } from '../api/endpoints'
 import IncomeSheet from '../components/IncomeSheet.vue'
 import AllocateSheet from '../components/AllocateSheet.vue'
@@ -10,7 +14,7 @@ import JarsPanel from '../components/JarsPanel.vue'
 import TripsPanel from '../components/TripsPanel.vue'
 import IncomeGapPanel from '../components/IncomeGapPanel.vue'
 import { store, setPeriod } from '../lib/store'
-import type { SubItemView } from '../api/types'
+import type { CategoryView, SubItemView } from '../api/types'
 import { groupLabel, modeLabel, money, parseDate, pct, shortDate, signed, toIso } from '../lib/format'
 
 const period = computed(() => store.period!)
@@ -18,6 +22,8 @@ const period = computed(() => store.period!)
 const subsOf = (id: number) => (period.value.subItems ?? []).filter((x) => x.categoryId === id && (x.spent > 0 || x.cap !== null))
 const subLeft = (s: SubItemView) => (s.cap === null ? '' : s.over > 0 ? `超 ${money(s.over)}` : money(s.cap - s.spent))
 const cats = computed(() => period.value.categories)
+/** 實際額度：設定額度扣掉已轉進待分配池的少花（超支由池補則加回） */
+const eff = (c: CategoryView) => c.budget - (c.toPool ?? 0)
 
 // 顏色跟著分類的設定順序固定，不會因為篩選或排序重新上色。
 const SLOTS = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6', '--series-7', '--series-8']
@@ -105,6 +111,11 @@ async function removeTransfer(id: number) {
 }
 
 const ledger = computed(() => [...period.value.pool.lines].reverse())
+
+// ---- 圖表 ----
+const byCategory = computed(() => spendByCategory(period.value))
+const bySlot = computed(() => spendBySlot(period.value))
+const weekly = computed(() => weeklyDaily(period.value))
 const showIncome = ref(false)
 const showAllocate = ref(false)
 
@@ -153,6 +164,7 @@ async function savePayday() {
         </div>
       </div>
       <div class="head-actions">
+        <RouterLink to="/report" class="btn sm">報告・PDF</RouterLink>
         <button class="btn sm" @click="showIncome = true">本期薪資</button>
         <button class="btn sm primary" :disabled="period.pool.balance <= 0" @click="showAllocate = true">分配剩餘</button>
       </div>
@@ -193,6 +205,28 @@ async function savePayday() {
       </div>
     </section>
 
+    <div class="grid-2">
+      <section class="section">
+        <h2 class="section-title">錢花到哪<span class="aside">到今天為止，含固定與儲蓄</span></h2>
+        <div class="panel panel-pad">
+          <Donut :slices="byCategory" center-label="已花" caption="各分類花費比例" />
+        </div>
+      </section>
+      <section class="section">
+        <h2 class="section-title">每日時段<span class="aside">沒回報的照預算算</span></h2>
+        <div class="panel panel-pad">
+          <Donut :slices="bySlot" center-label="每日額度類" caption="各時段花費比例" />
+        </div>
+      </section>
+    </div>
+
+    <section class="section">
+      <h2 class="section-title">每週花費<span class="aside">每日額度類；橫線 = 原排程</span></h2>
+      <div class="panel panel-pad">
+        <ColumnChart :columns="weekly" caption="每週花費" plan-label="原排程" />
+      </div>
+    </section>
+
     <section class="section">
       <h2 class="section-title">每日額度類累計花費<span class="aside">虛線 = 原本排程</span></h2>
       <div class="panel panel-pad">
@@ -221,11 +255,14 @@ async function savePayday() {
                 {{ c.name }}
                 <span class="tag">{{ modeLabel[c.mode] }}</span>
               </td>
-              <td class="r">{{ money(c.budget) }}</td>
+              <td class="r">
+                {{ money(eff(c)) }}
+                <span v-if="c.toPool" class="muted pool-tag">{{ c.toPool > 0 ? `已轉池 ${money(c.toPool)}` : `池補 ${money(-c.toPool)}` }}</span>
+              </td>
               <td class="r">{{ money(c.projected) }}</td>
-              <td class="r" :class="c.budget - c.projected < 0 ? 'bad' : ''">{{ money(c.budget - c.projected) }}</td>
+              <td class="r" :class="eff(c) - c.projected < 0 ? 'bad' : ''">{{ money(eff(c) - c.projected) }}</td>
               <td class="meter-col">
-                <Meter :value="c.projected" :max="c.budget" :level="c.projected > c.budget ? 'over' : c.mode === 'Envelope' && c.projected > c.budget * 0.85 ? 'near' : 'ok'" />
+                <Meter :value="c.projected" :max="eff(c)" :level="c.projected > eff(c) ? 'over' : c.mode === 'Envelope' && c.projected > eff(c) * 0.85 ? 'near' : 'ok'" />
               </td>
             </tr>
             <tr v-for="s in subsOf(c.categoryId)" :key="`${c.categoryId}-${s.name}`" class="sub-row">
@@ -310,6 +347,7 @@ async function savePayday() {
 .head-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .btn.inline {
   min-height: 24px;
@@ -393,6 +431,11 @@ async function savePayday() {
 .cat {
   font-size: 12px;
   margin-left: 4px;
+}
+.pool-tag {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
 }
 .sub-row td {
   font-size: 12px;

@@ -62,12 +62,14 @@ public static class BudgetEngine
         var lines = new List<PoolLine>();
         var unallocated = plan.Income - categories.Sum(c => c.Budget);
         lines.Add(new PoolLine(period.StartDate, unallocated, "Opening", "收入扣掉各分類額度後未分配", null, null));
+        var scheduleGap = new Dictionary<int, decimal>();
         foreach (var c in categories.Where(c => c.Mode == BudgetMode.Daily))
         {
             var baseline = allocations.Where(a => a.CategoryId == c.CategoryId).Sum(a => a.BaselinePlanned);
             var gap = c.Budget - baseline;
             if (gap != 0)
             {
+                scheduleGap[c.CategoryId] = gap;
                 lines.Add(new PoolLine(period.StartDate, gap, "Opening",
                     plan.GapLabels.TryGetValue(c.CategoryId, out var gapLabel) && gap > 0 ? gapLabel
                     : gap > 0 ? $"{c.Name}額度未排進日程的部分" : $"{c.Name}日程排超過額度", null, null));
@@ -208,6 +210,13 @@ public static class BudgetEngine
         }
 
         // ---- 各分類 ----
+        // 每筆回報造成的待分配池進出（少花進池、超支由池補），歸回它的分類：
+        // 少花的錢已經轉進待分配池，分類的「實際額度」就要扣掉，不然會跟池子重複算。
+        // 期初沒排進日程的額度（scheduleGap）也是一開始就進了池子，一起算。
+        var entryCategory = entryViews.Values.ToDictionary(v => v.Id, v => v.CategoryId);
+        var toPool = lines.Where(l => l.EntryId is { } id && entryCategory.ContainsKey(id))
+            .GroupBy(l => entryCategory[l.EntryId!.Value])
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Amount));
         var categoryViews = categories.Select(c =>
         {
             var scheduled = allocations.Where(a => a.CategoryId == c.CategoryId).Sum(a => a.Planned);
@@ -238,7 +247,8 @@ public static class BudgetEngine
                     break;
             }
             return new CategoryView(c.CategoryId, c.Name, c.Group, c.Mode, c.Budget + allocatedExtra[c.CategoryId],
-                scheduled, spent, plannedRemaining, spent + plannedRemaining, allocatedExtra[c.CategoryId]);
+                scheduled, spent, plannedRemaining, spent + plannedRemaining, allocatedExtra[c.CategoryId],
+                toPool.GetValueOrDefault(c.CategoryId) + scheduleGap.GetValueOrDefault(c.CategoryId));
         }).ToList();
 
         var adjustmentViews = incomeAdjustments

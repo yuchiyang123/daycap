@@ -137,6 +137,27 @@ public sealed class GuardrailAndMonthEndTests : IDisposable
     }
 
     [Fact]
+    public async Task Money_saved_on_a_slot_moves_to_the_pool_and_is_reported_against_its_category()
+    {
+        var (view, food, lunch) = await Setup();
+        var before = view.Categories.Single(c => c.CategoryId == food.CategoryId);
+        // 還沒回報時只有「沒排進日程的額度」在池子裡：實際額度＝排程，預計剛好用完
+        Assert.Equal(before.Budget - before.Scheduled, before.ToPool);
+        Assert.Equal(before.Budget - before.ToPool, before.Projected);
+
+        var planned = view.Days.Single(d => d.Date == _clock.Current).Slots.Single(s => s.SlotId == lunch.SlotId).Planned;
+        var after = await _entries.CreateAsync("u", view.Id,
+            new CreateEntryRequest(_clock.Current, food.CategoryId, lunch.SlotId, EntryInputMode.Actual, planned - 30, true, null, null));
+
+        var cat = after.Categories.Single(c => c.CategoryId == food.CategoryId);
+        Assert.Equal(before.ToPool + 30, cat.ToPool);        // 少花的 30 也進了池子
+        Assert.Equal(before.Budget, cat.Budget);             // 設定的額度不動
+        Assert.Equal(before.Projected - 30, cat.Projected);  // 預計少 30，實際額度也少 30，剩餘不會重複算
+        Assert.Equal(cat.Budget - cat.ToPool, cat.Projected); // 照計畫走：剩 0，不會跟池子重複算
+        Assert.Equal(view.Pool.Balance + 30, after.Pool.Balance);
+    }
+
+    [Fact]
     public async Task All_zero_today_reports_every_unreported_slot_as_nothing_spent()
     {
         var (view, _, _) = await Setup();
