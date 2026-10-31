@@ -12,6 +12,7 @@ import type { AccountEdit, AccountType, AssetsView, GoalDto, GoalScope, HoldingD
 import ReconcileSheet from '../components/ReconcileSheet.vue'
 import DebtsPanel from '../components/DebtsPanel.vue'
 import InstallmentsPanel from '../components/InstallmentsPanel.vue'
+import LivingChecksPanel from '../components/LivingChecksPanel.vue'
 import TransferSheet from '../components/TransferSheet.vue'
 import { money, pct, shortDate, signed } from '../lib/format'
 
@@ -289,6 +290,10 @@ async function toggleSavingsOnly(on: boolean) {
           <p v-if="data.cashAccounts.length === 0" class="empty">還沒有帳戶。按「編輯」新增銀行、現金、電子支付或信用卡。</p>
         </div>
         <p class="muted small">餘額是「最近一次對帳 + 之後的轉帳、繳卡費、資產加減、有記付款帳戶的花費」推算的；沒回報的日常花費只有對帳時才會補上。</p>
+      </section>
+      <section class="section">
+        <h2 class="section-title">生活錢對帳<span class="aside">沒登記的帳戶 − 信用卡未繳，對到記帳</span></h2>
+        <LivingChecksPanel />
       </section>
       <ReconcileSheet v-if="sheet === 'reconcile'" @close="sheet = null" @saved="load()" />
       <TransferSheet v-if="sheet === 'transfer'" @close="sheet = null" @saved="load()" />

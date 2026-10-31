@@ -38,7 +38,8 @@ public record PeriodView(
 public record SubItemView(int CategoryId, string Name, decimal? Cap, decimal Spent, decimal Over);
 
 /// <summary>對帳結果：Diff = 實際 − 預期；負的依超支規則處理（FromPool / Spread / Unabsorbed）。</summary>
-public record ReconciliationView(int Id, DateOnly Date, decimal Expected, decimal Actual, decimal Diff, decimal FromPool, decimal Spread, decimal Unabsorbed);
+// Living：生活錢對帳（沒登記的帳戶 − 信用卡未繳），不是帳戶對帳
+public record ReconciliationView(int Id, DateOnly Date, decimal Expected, decimal Actual, decimal Diff, decimal FromPool, decimal Spread, decimal Unabsorbed, bool Living = false);
 
 public record PoolView(decimal Opening, decimal Balance, List<PoolLine> Lines);
 

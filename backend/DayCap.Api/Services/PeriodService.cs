@@ -15,7 +15,7 @@ public interface IPeriodService
     Task<List<PeriodSummaryDto>> ListAsync(string userId, CancellationToken ct = default);
     Task<BudgetPeriod> LoadAsync(string userId, int periodId, CancellationToken ct = default, bool tracking = true);
     /// <param name="extraRecon">試算用：假裝多了這一次對帳（不存檔）。</param>
-    Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default, Reconciliation? extraRecon = null);
+    Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default, Reconciliation? extraRecon = null, LivingCheck? extraLiving = null);
     Task<int> DeleteBeforeStartAsync(string userId, CancellationToken ct = default);
     Task<PeriodView> SetNextPaydayAsync(string userId, int periodId, DateOnly payday, CancellationToken ct = default);
 }
@@ -110,8 +110,8 @@ public class PeriodService(
             .FirstOrDefaultAsync(p => p.Id == periodId && p.UserId == userId, ct)
         ?? throw new NotFoundException("找不到這個週期。");
 
-    public Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default, Reconciliation? extraRecon = null) =>
-        ComputeInternalAsync(period, extraRecon, [], 0, ct);
+    public Task<PeriodView> ComputeAsync(BudgetPeriod period, CancellationToken ct = default, Reconciliation? extraRecon = null, LivingCheck? extraLiving = null) =>
+        ComputeInternalAsync(period, extraRecon, extraLiving, [], 0, ct);
 
     /// <summary>
     /// 重播一期。這期裡面如果有完整對帳（§12.1），算出每一次的「沒交代的差異」：
@@ -119,7 +119,7 @@ public class PeriodService(
     /// 帳戶互轉、繳卡費不影響淨額，所以不用算。差額在對帳的登錄時間點重播（進池或照超支規則）。
     /// 後來補回報的事實會讓預期值跟著變，差額自動縮小。差額會影響之後的額度，所以迭代到穩定為止。
     /// </summary>
-    private async Task<PeriodView> ComputeInternalAsync(BudgetPeriod period, Reconciliation? extraRecon,
+    private async Task<PeriodView> ComputeInternalAsync(BudgetPeriod period, Reconciliation? extraRecon, LivingCheck? extraLiving,
         Dictionary<int, PeriodView> cache, int depth, CancellationToken ct)
     {
         var timeline = await settings.GetTimelineAsync(period.UserId, ct);
@@ -134,7 +134,7 @@ public class PeriodService(
             {
                 if (!cache.TryGetValue(pid, out var pv))
                 {
-                    pv = await ComputeInternalAsync(await LoadAsync(period.UserId, pid, ct, tracking: false), null, cache, depth + 1, ct);
+                    pv = await ComputeInternalAsync(await LoadAsync(period.UserId, pid, ct, tracking: false), null, null, cache, depth + 1, ct);
                     cache[pid] = pv;
                 }
                 previousIncome = pv.Income;
@@ -168,8 +168,14 @@ public class PeriodService(
         // 帳戶只記儲蓄：收入和花費不經過登記的帳戶，推算差額沒有意義 → 對帳只是更新餘額
         if (await db.Profiles.AsNoTracking().AnyAsync(p => p.UserId == period.UserId && p.SavingsOnlyAccounts, ct)) inPeriod.Clear();
 
+        // 生活錢對帳：沒登記的帳戶總額 − 信用卡未繳，跟上一次比。「帳戶只記儲蓄」也照算（本來就是給那種情況用的）
+        var living = (await db.LivingChecks.AsNoTracking().Where(c => c.UserId == period.UserId).ToListAsync(ct)).Active();
+        if (extraLiving is not null) living.Add(extraLiving);
+        living = living.OrderBy(c => c.Date).ThenBy(c => c.CreatedAt).ToList();
+        var livingInPeriod = living.Where(c => c.Date >= period.StartDate && c.Date <= period.EndDate).ToList();
+
         var view = await DecorateAsync(Run([]), period, ct);
-        if (inPeriod.Count == 0 || depth > 2) return view;
+        if ((inPeriod.Count == 0 && livingInPeriod.Count == 0) || depth > 2) return view;
 
         var types = await db.CashAccounts.AsNoTracking().Where(a => a.UserId == period.UserId).ToDictionaryAsync(a => a.Id, a => a.Type, ct);
         var adjustments = (await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == period.UserId).ToListAsync(ct)).Active();
@@ -196,6 +202,13 @@ public class PeriodService(
                 next.Add(new ReconDiff(r.Id, r.Date, r.CreatedAt,
                     AccountService.Net(prev, types) + flows, AccountService.Net(r, types), r.UsePool));
             }
+            foreach (var c in livingInPeriod)
+            {
+                var prev = living.LastOrDefault(x => x.Id != c.Id && (x.Date < c.Date || (x.Date == c.Date && x.CreatedAt < c.CreatedAt)));
+                if (prev is null || prev.Date < period.StartDate.AddDays(-100)) continue; // 第一次：只當起點
+                var flows = await LivingFlowsAsync(period, view, prev, c, cache, depth, ct);
+                next.Add(new ReconDiff(c.Id, c.Date, c.CreatedAt, prev.Net + flows, c.Net, c.UsePool, Living: true));
+            }
             var same = next.Count == diffs.Count && next.Zip(diffs).All(p => p.First.Id == p.Second.Id && p.First.Expected == p.Second.Expected);
             diffs = next;
             view = await DecorateAsync(Run(diffs), period, ct);
@@ -219,6 +232,49 @@ public class PeriodService(
             Closed = period.ClosedAt is not null,
             PreviousPeriodNeedsClosing = previous is { ClosedAt: null } ? previous.Id : null,
         };
+    }
+
+    /// <summary>
+    /// 兩次生活錢對帳之間的收支。對帳當天只算「對帳那一刻之前」已經回報的花費（還沒吃的晚餐不算），
+    /// 那天剩下的部分（之後的回報、沒回報照預算）算進下一次。收入、固定支出整天算，兩邊會互相抵掉。
+    /// </summary>
+    private async Task<decimal> LivingFlowsAsync(BudgetPeriod period, PeriodView view, LivingCheck prev, LivingCheck c,
+        Dictionary<int, PeriodView> cache, int depth, CancellationToken ct)
+    {
+        var prevView = await ViewForDayAsync(period, view, prev.Date, cache, depth, ct);
+        if (prev.Date == c.Date) return PartialFlow(prevView, c.Date, c.CreatedAt) - PartialFlow(prevView, c.Date, prev.CreatedAt);
+        var restOfPrevDay = prevView is null ? 0 : DayFlow(prevView, prev.Date) - PartialFlow(prevView, prev.Date, prev.CreatedAt);
+        return restOfPrevDay
+               + await FlowsAsync(period, view, prev.Date, c.Date.AddDays(-1), cache, depth, ct)
+               + PartialFlow(view, c.Date, c.CreatedAt);
+    }
+
+    /// <summary>某一天到某個時間點為止已知的收支：發薪日的收入 − 當天到期的固定支出 − 那之前回報的花費。</summary>
+    public static decimal PartialFlow(PeriodView? view, DateOnly d, DateTime asOfUtc)
+    {
+        if (view is null || view.Days.All(x => x.Date != d)) return 0;
+        var inflow = d == view.StartDate ? view.Income : 0;
+        var fixedOut = view.FixedCharges.Where(f => (f.DueDate ?? view.StartDate) == d).Sum(f => f.Amount);
+        var reported = view.Entries.Where(e => e.Date == d && e.CreatedAt <= asOfUtc)
+            .Sum(e => e.Actual + (e.SlotId is null ? e.JarCovered : 0)); // 罐子付的錢也真的從帳戶出去了
+        return inflow - fixedOut - reported;
+    }
+
+    /// <summary>某一天所屬期間的重播結果（本期用現成的，其他期間算一次放快取）；不屬於任何期間就是 null。</summary>
+    private async Task<PeriodView?> ViewForDayAsync(BudgetPeriod current, PeriodView currentView, DateOnly d,
+        Dictionary<int, PeriodView> cache, int depth, CancellationToken ct)
+    {
+        if (d >= current.StartDate && d <= current.EndDate) return currentView;
+        var other = await db.Periods.AsNoTracking()
+            .Where(p => p.UserId == current.UserId && p.StartDate <= d && p.EndDate >= d)
+            .Select(p => (int?)p.Id).FirstOrDefaultAsync(ct);
+        if (other is not { } oid) return null;
+        if (!cache.TryGetValue(oid, out var view))
+        {
+            view = await ComputeInternalAsync(await LoadAsync(current.UserId, oid, ct, tracking: false), null, null, cache, depth + 1, ct);
+            cache[oid] = view;
+        }
+        return view;
     }
 
     /// <summary>(from, to] 之間已知的收支（收入為正、支出為負）。跨到其他期間的日子，用那一期的重播結果。</summary>
@@ -246,7 +302,7 @@ public class PeriodService(
                 }
                 if (!cache.TryGetValue(oid, out view))
                 {
-                    view = await ComputeInternalAsync(await LoadAsync(current.UserId, oid, ct, tracking: false), null, cache, depth + 1, ct);
+                    view = await ComputeInternalAsync(await LoadAsync(current.UserId, oid, ct, tracking: false), null, null, cache, depth + 1, ct);
                     cache[oid] = view;
                 }
             }

@@ -422,6 +422,8 @@ export interface ReconciliationView {
   fromPool: number
   spread: number
   unabsorbed: number
+  /** 生活錢對帳（不是帳戶對帳） */
+  living?: boolean
 }
 
 export interface CreateEntryRequest {
@@ -518,6 +520,16 @@ export interface ReconciliationResult {
   largeDiff: boolean
   poolBefore: number
   poolAfter: number
+}
+
+export interface LivingCheckSummary {
+  id: number
+  date: string
+  accountsTotal: number
+  unpaidCard: number
+  net: number
+  note: string | null
+  createdAt: string
 }
 
 export interface ReconciliationSummary {

@@ -21,6 +21,11 @@ public interface IAccountService
     Task<ReconciliationResult> PreviewReconciliationAsync(string userId, CreateReconciliationRequest req, CancellationToken ct = default);
     Task<ReconciliationResult> CreateReconciliationAsync(string userId, CreateReconciliationRequest req, CancellationToken ct = default);
     Task DeleteReconciliationAsync(string userId, int id, CancellationToken ct = default);
+
+    Task<List<LivingCheckSummary>> ListLivingChecksAsync(string userId, CancellationToken ct = default);
+    Task<ReconciliationResult> PreviewLivingCheckAsync(string userId, CreateLivingCheckRequest req, CancellationToken ct = default);
+    Task<ReconciliationResult> CreateLivingCheckAsync(string userId, CreateLivingCheckRequest req, CancellationToken ct = default);
+    Task DeleteLivingCheckAsync(string userId, int id, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -333,7 +338,7 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
         }
 
         var after = await periods.ComputeAsync(await periods.LoadAsync(userId, periodId, ct, tracking: false), ct, persist ? null : recon);
-        var rv = after.Reconciliations.FirstOrDefault(x => x.Id == recon.Id);
+        var rv = after.Reconciliations.FirstOrDefault(x => !x.Living && x.Id == recon.Id);
         var baseline = (await LoadReconsAsync(userId, ct)).Active()
             .Where(x => x.IsFull && x.Id != recon.Id && (x.Date < recon.Date || (x.Date == recon.Date && x.CreatedAt < recon.CreatedAt)))
             .OrderBy(x => x.Date).ThenBy(x => x.CreatedAt).LastOrDefault();
@@ -348,6 +353,90 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
         var variableBudget = after.Categories.Where(c => c.Mode != BudgetMode.Fixed).Sum(c => c.Budget);
         return new ReconciliationResult(
             persist ? recon.Id : null, recon.Date, true, baseline?.Date,
+            rv.Expected, rv.Actual, rv.Diff, rv.FromPool, rv.Spread, rv.Unabsorbed,
+            variableBudget > 0 && Math.Abs(rv.Diff) > variableBudget * 0.3m,
+            before?.Pool.Balance ?? 0, after.Pool.Balance);
+    }
+
+    // ---------------- 生活錢對帳 ----------------
+
+    public async Task<List<LivingCheckSummary>> ListLivingChecksAsync(string userId, CancellationToken ct = default) =>
+        (await db.LivingChecks.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(ct)).Active()
+            .OrderByDescending(c => c.Date).ThenByDescending(c => c.CreatedAt)
+            .Select(c => new LivingCheckSummary(c.Id, c.Date, c.AccountsTotal, c.UnpaidCard, c.Net, c.Note, c.CreatedAt))
+            .ToList();
+
+    public Task<ReconciliationResult> PreviewLivingCheckAsync(string userId, CreateLivingCheckRequest req, CancellationToken ct = default) =>
+        RunLivingAsync(userId, req, persist: false, ct);
+
+    public Task<ReconciliationResult> CreateLivingCheckAsync(string userId, CreateLivingCheckRequest req, CancellationToken ct = default) =>
+        RunLivingAsync(userId, req, persist: true, ct);
+
+    public async Task DeleteLivingCheckAsync(string userId, int id, CancellationToken ct = default)
+    {
+        var c = (await db.LivingChecks.Where(x => x.UserId == userId).ToListAsync(ct)).Active().FirstOrDefault(x => x.Id == id)
+                ?? throw new NotFoundException("找不到這次生活錢對帳。");
+        if (await db.Periods.AnyAsync(p => p.UserId == userId && p.StartDate <= c.Date && p.EndDate >= c.Date && p.ClosedAt != null, ct))
+            throw new ValidationException("那一期已經月結，不能再刪（§4.2）。");
+        db.LivingChecks.Add(new LivingCheck
+        {
+            UserId = userId, Date = c.Date, AccountsTotal = c.AccountsTotal, UnpaidCard = c.UnpaidCard,
+            Note = "刪除", IsVoid = true, ReplacesId = c.Id, CreatedAt = clock.UtcNow,
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<ReconciliationResult> RunLivingAsync(string userId, CreateLivingCheckRequest req, bool persist, CancellationToken ct)
+    {
+        var today = await settings.LogicalTodayAsync(userId, ct);
+        if (req.Date > today) throw new ValidationException("對帳日期不能是未來。");
+        if (req.AccountsTotal < 0 || req.UnpaidCard < 0 || req.AccountsTotal > 2_000_000_000 || req.UnpaidCard > 2_000_000_000)
+            throw new ValidationException("金額要介於 0 到 20 億之間。");
+        var period = await db.Periods.AsNoTracking()
+            .Where(p => p.UserId == userId && p.StartDate <= req.Date && p.EndDate >= req.Date)
+            .Select(p => new { p.Id, p.ClosedAt }).FirstOrDefaultAsync(ct);
+        if (period?.ClosedAt is not null) throw new ValidationException("那一期已經月結，不能再加對帳（§4.2）。");
+
+        var note = req.Note?.Trim();
+        var check = new LivingCheck
+        {
+            UserId = userId,
+            Date = req.Date,
+            AccountsTotal = Math.Round(req.AccountsTotal, 0),
+            UnpaidCard = Math.Round(req.UnpaidCard, 0),
+            UsePool = req.UsePool,
+            Note = string.IsNullOrEmpty(note) ? null : note[..Math.Min(note.Length, 120)],
+            CreatedAt = clock.UtcNow,
+        };
+        var baseline = (await db.LivingChecks.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(ct)).Active()
+            .Where(x => x.Date < check.Date || (x.Date == check.Date && x.CreatedAt < check.CreatedAt))
+            .OrderBy(x => x.Date).ThenBy(x => x.CreatedAt).LastOrDefault();
+
+        PeriodView? before = null;
+        if (period is not null) before = await periods.ComputeAsync(await periods.LoadAsync(userId, period.Id, ct, tracking: false), ct);
+
+        if (persist)
+        {
+            db.LivingChecks.Add(check);
+            await db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            check.Id = int.MaxValue;
+        }
+
+        if (period is null)
+            return new ReconciliationResult(persist ? check.Id : null, check.Date, false, baseline?.Date, check.Net, check.Net, 0, 0, 0, 0, false, 0, 0);
+
+        var after = await periods.ComputeAsync(await periods.LoadAsync(userId, period.Id, ct, tracking: false), ct, null, persist ? null : check);
+        var rv = after.Reconciliations.FirstOrDefault(x => x.Living && x.Id == check.Id);
+        if (rv is null) // 第一次（或上一次太久以前）：只當起點
+            return new ReconciliationResult(persist ? check.Id : null, check.Date, false, null, check.Net, check.Net, 0, 0, 0, 0, false,
+                before?.Pool.Balance ?? 0, after.Pool.Balance);
+
+        var variableBudget = after.Categories.Where(c => c.Mode != BudgetMode.Fixed).Sum(c => c.Budget);
+        return new ReconciliationResult(
+            persist ? check.Id : null, check.Date, true, baseline?.Date,
             rv.Expected, rv.Actual, rv.Diff, rv.FromPool, rv.Spread, rv.Unabsorbed,
             variableBudget > 0 && Math.Abs(rv.Diff) > variableBudget * 0.3m,
             before?.Pool.Balance ?? 0, after.Pool.Balance);

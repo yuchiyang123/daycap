@@ -253,6 +253,79 @@ public sealed class AccountTests : IDisposable
         Assert.Empty(after.Reconciliations);
     }
 
+    // ---------------- 生活錢對帳 ----------------
+
+    private CreateLivingCheckRequest Living(decimal accounts, decimal card, bool usePool = true) =>
+        new(_clock.Current, accounts, card, usePool, null);
+
+    [Fact]
+    public async Task First_living_check_is_only_a_starting_point()
+    {
+        var period = await _periods.GetCurrentAsync("u");
+
+        var result = await _accounts.CreateLivingCheckAsync("u", Living(40_000, 5_000));
+
+        Assert.False(result.HasBaseline);
+        Assert.Equal(35_000, result.Actual);
+        Assert.Equal(0, result.Diff);
+        Assert.Equal(period.Pool.Balance, (await _periods.GetAsync("u", period.Id)).Pool.Balance);
+    }
+
+    [Fact]
+    public async Task Spending_reported_since_the_last_check_the_same_day_is_expected()
+    {
+        var period = await _periods.GetCurrentAsync("u");
+        var fun = period.Categories.Single(c => c.Name == "娛樂");
+        await _accounts.CreateLivingCheckAsync("u", Living(40_000, 0));
+        await _entries.CreateAsync("u", period.Id, new CreateEntryRequest(_clock.Current, fun.CategoryId, null, EntryInputMode.Actual, 1_200, true, "耳機", null));
+
+        // 刷卡 1,200：帳戶沒動、卡費未繳多 1,200 → 剛好對上
+        var exact = await _accounts.PreviewLivingCheckAsync("u", Living(40_000, 1_200));
+        Assert.True(exact.HasBaseline);
+        Assert.Equal(38_800, exact.Expected);
+        Assert.Equal(0, exact.Diff);
+
+        // 實際還多刷了 300 沒記 → 少 300
+        var missing = await _accounts.PreviewLivingCheckAsync("u", Living(40_000, 1_500));
+        Assert.Equal(-300, missing.Diff);
+    }
+
+    [Fact]
+    public async Task Living_check_difference_goes_to_the_pool_and_deleting_it_removes_the_effect()
+    {
+        var period = await _periods.GetCurrentAsync("u");
+        await _accounts.CreateLivingCheckAsync("u", Living(40_000, 0));
+        _clock.Current = _clock.Current.AddDays(2);
+        var expected = (await _accounts.PreviewLivingCheckAsync("u", Living(0, 0))).Expected; // 起點 − 這兩天照預算的花費
+        Assert.True(expected < 40_000);
+
+        var more = await _accounts.CreateLivingCheckAsync("u", Living(expected + 500, 0));
+        Assert.Equal(500, more.Diff);
+        Assert.Equal(more.PoolBefore + 500, more.PoolAfter);
+        var view = await _periods.GetAsync("u", period.Id);
+        Assert.Contains(view.Pool.Lines, l => l.Kind == "Reconcile" && l.Amount == 500 && l.Label.StartsWith("生活錢對帳"));
+        Assert.Contains(view.Reconciliations, r => r.Living && r.Diff == 500);
+
+        await _accounts.DeleteLivingCheckAsync("u", more.Id!.Value);
+        Assert.Equal(more.PoolBefore, (await _periods.GetAsync("u", period.Id)).Pool.Balance);
+        Assert.Single(await _accounts.ListLivingChecksAsync("u"));
+    }
+
+    [Fact]
+    public async Task Living_checks_still_count_when_accounts_only_track_savings()
+    {
+        var period = await _periods.GetCurrentAsync("u");
+        var profile = await _settings.EnsureProfileAsync("u");
+        profile.SavingsOnlyAccounts = true;
+        await _db.SaveChangesAsync();
+        await _accounts.CreateLivingCheckAsync("u", Living(40_000, 0));
+
+        var result = await _accounts.CreateLivingCheckAsync("u", Living(39_000, 0)); // 同一天、沒有記任何花費卻少了 1,000
+
+        Assert.Equal(-1_000, result.Diff);
+        Assert.Contains((await _periods.GetAsync("u", period.Id)).Reconciliations, r => r.Living && r.Diff == -1_000);
+    }
+
     private sealed class WeekendOnlyCalendar : ICalendarService
     {
         public Task<Dictionary<DateOnly, DayInfo>> GetDaysAsync(string userId, DateOnly from, DateOnly to, CancellationToken ct = default)

@@ -48,4 +48,9 @@ public record ReconciliationResult(
     decimal PoolBefore,
     decimal PoolAfter);
 
+/// <summary>生活錢對帳：沒登記的帳戶（薪轉戶、生活帳戶、現金…）加總，和信用卡已刷未繳。</summary>
+public record CreateLivingCheckRequest(DateOnly Date, decimal AccountsTotal, decimal UnpaidCard, bool UsePool, string? Note);
+
+public record LivingCheckSummary(int Id, DateOnly Date, decimal AccountsTotal, decimal UnpaidCard, decimal Net, string? Note, DateTime CreatedAt);
+
 public record ReconciliationSummary(int Id, DateOnly Date, bool IsFull, decimal Net, string? Note, DateTime CreatedAt, List<ReconcileLineInput> Lines);

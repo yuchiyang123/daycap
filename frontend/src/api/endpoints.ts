@@ -5,6 +5,7 @@ import type {
   AssetAdjustmentView,
   ReconciliationResult,
   ReconciliationSummary,
+  LivingCheckSummary,
   TransferKind,
   TransferView,
   AssetsView,
@@ -130,6 +131,15 @@ export const previewReconciliation = (body: ReconcileBody) =>
 export const createReconciliation = (body: ReconcileBody) =>
   api<ReconciliationResult>('/api/accounts/reconciliations', { method: 'POST', body })
 export const deleteReconciliation = (id: number) => api<void>(`/api/accounts/reconciliations/${id}`, { method: 'DELETE' })
+
+// 生活錢對帳：沒登記的帳戶總額 − 信用卡已刷未繳
+type LivingCheckBody = { date: string; accountsTotal: number; unpaidCard: number; usePool: boolean; note: string | null }
+export const listLivingChecks = () => api<LivingCheckSummary[]>('/api/accounts/living-checks')
+export const previewLivingCheck = (body: LivingCheckBody) =>
+  api<ReconciliationResult>('/api/accounts/living-checks/preview', { method: 'POST', body })
+export const createLivingCheck = (body: LivingCheckBody) =>
+  api<ReconciliationResult>('/api/accounts/living-checks', { method: 'POST', body })
+export const deleteLivingCheck = (id: number) => api<void>(`/api/accounts/living-checks/${id}`, { method: 'DELETE' })
 
 // ---- 設定即時合計、分配器預覽（§7、§8.2）----
 export const estimateSettings = (draft: SettingsDto) => api<SettingsEstimate>('/api/settings/estimate', { method: 'POST', body: draft })

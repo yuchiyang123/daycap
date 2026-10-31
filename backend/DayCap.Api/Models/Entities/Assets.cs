@@ -172,3 +172,27 @@ public class Notification
     public string? Payload { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// 生活錢對帳：薪轉戶、生活帳戶這些沒登記的帳戶加起來，扣掉信用卡已刷未繳 = 實際剩下的生活錢。
+/// 跟上一次比：預期 = 上次的實際 + 兩次之間的收入 − 花費（時段、額外花費、固定支出含轉去存款的錢）。
+/// 第一次只當起點；差額（漏記或多記）在重播時進待分配池，或照超支規則處理。
+/// </summary>
+public class LivingCheck : IFact
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } = "";
+    public DateOnly Date { get; set; }
+    /// <summary>沒登記的帳戶（薪轉戶、生活帳戶、現金…）加總</summary>
+    public decimal AccountsTotal { get; set; }
+    /// <summary>信用卡已刷、還沒繳的金額</summary>
+    public decimal UnpaidCard { get; set; }
+    /// <summary>少了（漏記）時先從待分配池扣；不勾就攤到之後的日子。</summary>
+    public bool UsePool { get; set; } = true;
+    public string? Note { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int? ReplacesId { get; set; }
+    public bool IsVoid { get; set; }
+
+    public decimal Net => AccountsTotal - UnpaidCard;
+}

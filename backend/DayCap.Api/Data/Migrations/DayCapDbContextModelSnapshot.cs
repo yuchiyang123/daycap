@@ -906,6 +906,50 @@ namespace DayCap.Api.Data.Migrations
                     b.ToTable("Jars");
                 });
 
+            modelBuilder.Entity("DayCap.Api.Models.Entities.LivingCheck", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("AccountsTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsVoid")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ReplacesId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("UnpaidCard")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("UsePool")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Date");
+
+                    b.ToTable("LivingChecks");
+                });
+
             modelBuilder.Entity("DayCap.Api.Models.Entities.MonthEnd", b =>
                 {
                     b.Property<int>("Id")

@@ -58,6 +58,7 @@ public class UserDataService(DayCapDbContext db, IAppClock clock) : IUserDataSer
             monthEnds = await db.MonthEnds.AsNoTracking().Where(m => m.UserId == userId).ToListAsync(ct),
             accounts = await db.CashAccounts.AsNoTracking().Where(a => a.UserId == userId).ToListAsync(ct),
             reconciliations = await db.Reconciliations.AsNoTracking().Include(r => r.Lines).Where(r => r.UserId == userId).ToListAsync(ct),
+            livingChecks = await db.LivingChecks.AsNoTracking().Where(c => c.UserId == userId).ToListAsync(ct),
             accountTransfers = await db.AccountTransfers.AsNoTracking().Where(t => t.UserId == userId).ToListAsync(ct),
             assetAdjustments = await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == userId).ToListAsync(ct),
             holdings = await db.Holdings.AsNoTracking().Where(h => h.UserId == userId).ToListAsync(ct),
@@ -140,6 +141,7 @@ public class UserDataService(DayCapDbContext db, IAppClock clock) : IUserDataSer
         await db.PeriodCarryovers.Where(c => c.UserId == userId).ExecuteDeleteAsync(ct);
         await db.ReconciliationLines.Where(l => reconIds.Contains(l.ReconciliationId)).ExecuteDeleteAsync(ct);
         await db.Reconciliations.Where(r => r.UserId == userId).ExecuteDeleteAsync(ct);
+        await db.LivingChecks.Where(c => c.UserId == userId).ExecuteDeleteAsync(ct);
         await db.Periods.Where(p => p.UserId == userId).ExecuteDeleteAsync(ct);
         await db.AccountTransfers.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct);
         await db.AssetAdjustments.Where(a => a.UserId == userId).ExecuteDeleteAsync(ct);
@@ -190,6 +192,9 @@ public class UserDataService(DayCapDbContext db, IAppClock clock) : IUserDataSer
         Add(await db.Reconciliations.AsNoTracking().Where(r => r.UserId == userId && r.CreatedAt >= since).ToListAsync(ct), "對帳",
             f => f is Reconciliation r ? $"{r.Date:M/d} {(r.IsFull ? "完整對帳" : "部分帳戶")}{(string.IsNullOrEmpty(r.Note) ? "" : "・" + r.Note)}" : "",
             f => ((Reconciliation)f).CreatedAt);
+        Add(await db.LivingChecks.AsNoTracking().Where(c => c.UserId == userId && c.CreatedAt >= since).ToListAsync(ct), "生活錢對帳",
+            f => f is LivingCheck c ? $"{c.Date:M/d} 帳戶 {c.AccountsTotal:N0} − 卡費未繳 {c.UnpaidCard:N0}{(string.IsNullOrEmpty(c.Note) ? "" : "・" + c.Note)}" : "",
+            f => ((LivingCheck)f).CreatedAt);
         Add(await db.AccountTransfers.AsNoTracking().Where(t => t.UserId == userId && t.CreatedAt >= since).ToListAsync(ct), "轉帳",
             f => f is AccountTransfer t ? $"{t.Date:M/d} {t.Amount:N0}" : "", f => ((AccountTransfer)f).CreatedAt);
         Add(await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == userId && a.CreatedAt >= since).ToListAsync(ct), "資產加減",
@@ -221,6 +226,7 @@ public class UserDataService(DayCapDbContext db, IAppClock clock) : IUserDataSer
         PoolTransfer t => t.Id,
         IncomeAdjustment a => a.Id,
         Reconciliation r => r.Id,
+        LivingCheck c => c.Id,
         AccountTransfer t => t.Id,
         AssetAdjustment a => a.Id,
         Debt d => d.Id,

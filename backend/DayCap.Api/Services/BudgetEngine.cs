@@ -9,7 +9,7 @@ public record DayInfo(bool IsHoliday, string? Name);
 /// 一次完整對帳算出的「沒交代的差異」（§12.1）：實際淨額 − 預期淨額。由服務層算好傳進來，
 /// 引擎在它的登錄時間點重播：正的進待分配池；負的照超支規則（先池、再攤到之後所有每日類時段）。
 /// </summary>
-public record ReconDiff(int Id, DateOnly Date, DateTime CreatedAt, decimal Expected, decimal Actual, bool UsePool)
+public record ReconDiff(int Id, DateOnly Date, DateTime CreatedAt, decimal Expected, decimal Actual, bool UsePool, bool Living = false)
 {
     public decimal Diff => Actual - Expected;
 }
@@ -100,7 +100,7 @@ public static class BudgetEngine
         var events = entries.Select(e => new Event(e.CreatedAt, 0, e.Id, e, null, null, null))
             .Concat(transfers.Select(t => new Event(t.CreatedAt, 1, t.Id, null, t, null, null)))
             .Concat(plan.Lowerings.Select((l, i) => new Event(l.AsOfUtc, 2, i, null, null, l, null)))
-            .Concat((reconDiffs ?? []).Select(r => new Event(r.CreatedAt, 3, r.Id, null, null, null, r)))
+            .Concat((reconDiffs ?? []).Select(r => new Event(r.CreatedAt, r.Living ? 4 : 3, r.Id, null, null, null, r)))
             .OrderBy(x => x.At).ThenBy(x => x.Order).ThenBy(x => x.Id)
             .ToList();
         var reconViews = new List<ReconciliationView>();
@@ -298,7 +298,7 @@ public static class BudgetEngine
         if (diff > 0)
         {
             pool += diff;
-            lines.Add(new PoolLine(r.Date, diff, "Reconcile", "對帳：實際餘額比預期多", null, null));
+            lines.Add(new PoolLine(r.Date, diff, "Reconcile", r.Living ? "生活錢對帳：實際比預期多" : "對帳：實際餘額比預期多", null, null));
         }
         else if (diff < 0)
         {
@@ -309,7 +309,7 @@ public static class BudgetEngine
                 if (fromPool > 0)
                 {
                     pool -= fromPool;
-                    lines.Add(new PoolLine(r.Date, -fromPool, "Reconcile", "對帳：沒交代的差異", null, null));
+                    lines.Add(new PoolLine(r.Date, -fromPool, "Reconcile", r.Living ? "生活錢對帳：有花費沒記到" : "對帳：沒交代的差異", null, null));
                 }
             }
             var rest = over - fromPool;
@@ -325,11 +325,11 @@ public static class BudgetEngine
                 if (unabsorbed > 0)
                 {
                     pool -= unabsorbed;
-                    lines.Add(new PoolLine(r.Date, -unabsorbed, "Reconcile", "對帳差異超過護欄下限，從待分配池扣", null, null));
+                    lines.Add(new PoolLine(r.Date, -unabsorbed, "Reconcile", r.Living ? "生活錢對帳差異超過護欄下限，從待分配池扣" : "對帳差異超過護欄下限，從待分配池扣", null, null));
                 }
             }
         }
-        return new ReconciliationView(r.Id, r.Date, r.Expected, r.Actual, diff, fromPool, spread, unabsorbed);
+        return new ReconciliationView(r.Id, r.Date, r.Expected, r.Actual, diff, fromPool, spread, unabsorbed, r.Living);
     }
 
     private static EntryView ApplyEnvelope(Entry e, PeriodCategory cat, decimal budget, Dictionary<int, decimal> envelopeSpent, ref decimal pool, List<PoolLine> lines)

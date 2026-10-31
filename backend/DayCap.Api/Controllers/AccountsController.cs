@@ -43,6 +43,25 @@ public class AccountsController(IAccountService accounts) : ControllerBase
     public Task<ReconciliationResult> Create(CreateReconciliationRequest req, CancellationToken ct) =>
         accounts.CreateReconciliationAsync(User.GetUserId(), req, ct);
 
+    // 生活錢對帳：沒登記的帳戶總額 − 信用卡未繳，對到記帳算出來應該剩的錢
+    [HttpGet("living-checks")]
+    public Task<List<LivingCheckSummary>> LivingChecks(CancellationToken ct) => accounts.ListLivingChecksAsync(User.GetUserId(), ct);
+
+    [HttpPost("living-checks/preview")]
+    public Task<ReconciliationResult> PreviewLiving(CreateLivingCheckRequest req, CancellationToken ct) =>
+        accounts.PreviewLivingCheckAsync(User.GetUserId(), req, ct);
+
+    [HttpPost("living-checks")]
+    public Task<ReconciliationResult> CreateLiving(CreateLivingCheckRequest req, CancellationToken ct) =>
+        accounts.CreateLivingCheckAsync(User.GetUserId(), req, ct);
+
+    [HttpDelete("living-checks/{id:int}")]
+    public async Task<IActionResult> DeleteLiving(int id, CancellationToken ct)
+    {
+        await accounts.DeleteLivingCheckAsync(User.GetUserId(), id, ct);
+        return NoContent();
+    }
+
     [HttpDelete("reconciliations/{id:int}")]
     public async Task<IActionResult> DeleteReconciliation(int id, CancellationToken ct)
     {
