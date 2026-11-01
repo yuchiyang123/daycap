@@ -38,9 +38,8 @@ const monthEndOpen = computed(() => {
   const openFrom = end.toISOString().slice(0, 10)
   return period.value.today >= openFrom
 })
-/** 上期還沒月結：先擋住，可以選擇晚點再說（只在這次開著時有效） */
-const gateDismissed = ref(false)
-const gated = computed(() => period.value.previousPeriodNeedsClosing !== null && !gateDismissed.value)
+/** 上期還沒月結：先擋住（App 層會強制跳出結算視窗，選完才放行） */
+const gated = computed(() => period.value.previousPeriodNeedsClosing !== null)
 
 async function confirmNoChange() {
   setPeriod(await confirmIncome(period.value.id))
@@ -65,7 +64,6 @@ async function confirmNoChange() {
         <p class="muted">先對帳、看結果、決定結餘或超支怎麼處理，這期的期初才會是對的。</p>
       </div>
       <div class="gate-actions">
-        <button v-if="gated" type="button" class="btn" @click="gateDismissed = true">晚點再說</button>
         <RouterLink :to="`/month-end/${period.previousPeriodNeedsClosing}`" class="btn primary">去月結</RouterLink>
       </div>
     </section>

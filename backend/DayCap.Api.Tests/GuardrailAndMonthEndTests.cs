@@ -171,6 +171,35 @@ public sealed class GuardrailAndMonthEndTests : IDisposable
     }
 
     [Fact]
+    public async Task Month_end_surplus_can_go_to_savings_instead_of_the_next_pool()
+    {
+        await _accounts.SaveAccountsAsync("u", [new AccountEdit(0, "玉山", AccountType.Bank, 50_000)]);
+        var october = await _periods.GetCurrentAsync("u");
+        var bankId = (await _accounts.GetAsync("u")).Accounts.Single().Id;
+        var profile = await _settings.EnsureProfileAsync("u");
+        profile.SavingsOnlyAccounts = true; // 月結不用先對帳
+        await _db.SaveChangesAsync();
+        await _db.PoolTransfers.AddAsync(new PoolTransfer { PeriodId = october.Id, Date = october.StartDate, Amount = 1_200, Note = "測試結餘", CreatedAt = _clock.UtcNow });
+        await _db.SaveChangesAsync();
+
+        _clock.Current = new DateOnly(2026, 10, 29);
+        var before = (await _accounts.GetAsync("u")).Accounts.Single().Balance;
+        await Assert.ThrowsAsync<Common.ValidationException>(() =>
+            _monthEnd.CloseAsync("u", october.Id, new CloseMonthRequest(ShortfallChoice.Savings, null, []))); // 沒選帳戶
+
+        var closed = await _monthEnd.CloseAsync("u", october.Id, new CloseMonthRequest(ShortfallChoice.Savings, bankId, []));
+
+        Assert.True(closed.Result > 0);
+        Assert.Equal(ShortfallChoice.Savings, closed.Summary!.Decision);
+        Assert.Equal(0, closed.Summary.CarryAmount);
+        Assert.Equal(before + closed.Result, (await _accounts.GetAsync("u")).Accounts.Single().Balance);
+
+        _clock.Current = new DateOnly(2026, 11, 2);
+        var november = await _periods.GetCurrentAsync("u");
+        Assert.DoesNotContain(november.Pool.Lines, l => l.Kind == "Carryover");
+    }
+
+    [Fact]
     public async Task Month_end_needs_a_reconciliation_then_carries_the_result_and_locks_the_period()
     {
         await _accounts.SaveAccountsAsync("u", [new AccountEdit(0, "薪轉", AccountType.Bank, 50_000)]);

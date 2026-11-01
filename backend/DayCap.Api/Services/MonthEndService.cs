@@ -20,7 +20,7 @@ public interface IMonthEndService
 /// 3. 報表：本期省或超多少（與上期比）、最常超支的時段／分類、沒交代的差異、目標進度與預計達成日。
 /// 4. 決定下期是否調整時段金額（存成從下一期第一天起生效的設定版本）；缺口怎麼補。
 /// 5. 存成不可修改的快照，這期從此不能再改。
-/// 6. 結餘放進下一期的待分配池；缺口依決定結轉、分兩期或從存款吸收。
+/// 6. 結餘依決定放進下一期的待分配池或轉進存款；缺口依決定結轉、分兩期或從存款吸收。
 /// </summary>
 public class MonthEndService(
     DayCapDbContext db,
@@ -80,20 +80,35 @@ public class MonthEndService(
         var result = view.Pool.Balance;
         var next = period.EndDate.AddDays(1);
         var label = $"{period.StartDate:M/d}–{period.EndDate:M/d}";
+        // 要存進或從存款扣的帳戶：先檢查，選錯就整個不存（不能留下半套的月結）
+        var toSavings = req.Decision == ShortfallChoice.Savings && result != 0;
+        var savingsAccount = toSavings
+            ? await SavingsAccountAsync(userId, req.AccountId, result > 0 ? "要選一個帳戶來存結餘。" : "要選一個存款帳戶來吸收缺口。", ct)
+            : null;
 
         var monthEnd = new MonthEnd
         {
             UserId = userId,
             PeriodId = period.Id,
             Result = result,
-            Decision = result < 0 ? req.Decision : ShortfallChoice.Pool,
+            // 結餘只有兩種：帶進下一期（Pool）或轉進存款（Savings）
+            Decision = result < 0 ? req.Decision : req.Decision == ShortfallChoice.Savings ? ShortfallChoice.Savings : ShortfallChoice.Pool,
             ClosedAt = clock.UtcNow,
         };
         db.MonthEnds.Add(monthEnd);
         await db.SaveChangesAsync(ct);
 
         decimal carry = 0;
-        if (result > 0)
+        if (result > 0 && monthEnd.Decision == ShortfallChoice.Savings)
+        {
+            // 結餘轉進存款：記成那個帳戶的一筆存入，下一期從 0 開始
+            db.AssetAdjustments.Add(new AssetAdjustment
+            {
+                UserId = userId, CashAccountId = savingsAccount!.Id, Date = period.EndDate, Amount = result,
+                Note = $"{label} 月結結餘轉進存款", Source = "monthend", PeriodId = period.Id, CreatedAt = clock.UtcNow,
+            });
+        }
+        else if (result > 0)
         {
             // 結餘放進下一期的待分配池（§12.2 第 6 步）
             carry = result;
@@ -110,12 +125,9 @@ public class MonthEndService(
                     carry = -gap;
                     break;
                 case ShortfallChoice.Savings:
-                    var account = await db.CashAccounts.FirstOrDefaultAsync(a => a.Id == req.AccountId && a.UserId == userId && !a.IsArchived, ct)
-                                  ?? throw new ValidationException("要選一個存款帳戶來吸收缺口。");
-                    if (AccountService.IsLiability(account.Type)) throw new ValidationException("不能用信用卡吸收缺口。");
                     db.AssetAdjustments.Add(new AssetAdjustment
                     {
-                        UserId = userId, CashAccountId = account.Id, Date = period.EndDate, Amount = -gap,
+                        UserId = userId, CashAccountId = savingsAccount!.Id, Date = period.EndDate, Amount = -gap,
                         Note = $"{label} 月結缺口從存款吸收", Source = "monthend", PeriodId = period.Id, CreatedAt = clock.UtcNow,
                     });
                     break;
@@ -139,6 +151,14 @@ public class MonthEndService(
         return await ReportAsync(userId, periodId, ct);
     }
 
+    private async Task<CashAccount> SavingsAccountAsync(string userId, int? accountId, string missing, CancellationToken ct)
+    {
+        var account = await db.CashAccounts.FirstOrDefaultAsync(a => a.Id == accountId && a.UserId == userId && !a.IsArchived, ct)
+                      ?? throw new ValidationException(missing);
+        if (AccountService.IsLiability(account.Type)) throw new ValidationException("信用卡不能當存款帳戶。");
+        return account;
+    }
+
     private void AddCarry(string userId, int periodId, int monthEndId, DateOnly target, decimal amount, string label)
     {
         if (amount == 0) return;
@@ -151,7 +171,7 @@ public class MonthEndService(
 
     public static string Message(decimal result, ShortfallChoice decision) => result switch
     {
-        > 0 => $"上期省了 {result:N0}，已放進待分配池。",
+        > 0 => decision == ShortfallChoice.Savings ? $"上期省了 {result:N0}，已轉進存款。" : $"上期省了 {result:N0}，已放進待分配池。",
         < 0 => decision switch
         {
             ShortfallChoice.Split => $"上期超支 {-result:N0}，分兩期從待分配池還。",

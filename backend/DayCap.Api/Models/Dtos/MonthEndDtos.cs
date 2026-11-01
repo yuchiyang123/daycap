@@ -33,7 +33,10 @@ public record GoalProgress(string Name, decimal Current, decimal Target, decimal
 
 public record SlotChange(int CategoryId, int SlotId, decimal WorkdayAmount, decimal HolidayAmount);
 
-/// <summary>最後一步的決定：缺口怎麼補（結餘一律放進待分配池）、下期時段要不要調整。</summary>
+/// <summary>
+/// 最後一步的決定：結餘帶進下一期待分配池（Pool）或轉進存款（Savings，AccountId 必填）；
+/// 缺口怎麼補（Pool / Split / Savings）；下期時段要不要調整。
+/// </summary>
 public record CloseMonthRequest(ShortfallChoice Decision, int? AccountId, List<SlotChange> SlotChanges);
 
 /// <summary>已完成的月結（快照裡的重點）。</summary>

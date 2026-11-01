@@ -8,12 +8,20 @@ import NotificationBell from './components/NotificationBell.vue'
 import NotificationPopup from './components/NotificationPopup.vue'
 import { logicalToday } from './lib/format'
 import LockScreen from './components/LockScreen.vue'
+import ClosingGate from './components/ClosingGate.vue'
 import { lockState } from './lib/applock'
 import { dismissFailed, offlineState } from './lib/offline'
 
 const route = useRoute()
 const keepAlive = ['TodayView', 'MonthView', 'LedgerView', 'OverviewView', 'AssetsView', 'SettingsView']
 const isPublic = computed(() => !!route.meta.public)
+// 新的一期開始（發薪日、「一天從幾點開始」那一刻）而上一期還沒月結：強制先決定上期結果。
+// 月結頁、資產頁（要先對帳時）放行。
+const closingGate = computed(() => {
+  const id = store.period?.previousPeriodNeedsClosing ?? null
+  if (id === null || isPublic.value) return null
+  return route.path.startsWith('/month-end') || route.path === '/assets' ? null : id
+})
 const needsPeriod = computed(() => !!route.meta.needsPeriod)
 
 const tabs = [
@@ -85,6 +93,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible
       <RouterLink v-for="t in tabs" :key="t.to" :to="t.to" class="tab">{{ t.label }}</RouterLink>
     </nav>
   </template>
+  <ClosingGate v-if="closingGate !== null" :period-id="closingGate" />
   <LockScreen v-if="lockState.locked && !isPublic" />
 </template>
 

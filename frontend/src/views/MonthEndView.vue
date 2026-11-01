@@ -21,7 +21,8 @@ const error = ref<string | null>(null)
 const reconciling = ref(false)
 const closing = ref(false)
 
-const decision = ref<ShortfallChoice>('Pool')
+// 結餘 / 超支怎麼處理：一定要自己選，沒有預設
+const decision = ref<ShortfallChoice | null>(null)
 const accountId = ref<number | null>(null)
 /** 下期時段金額：key = `${categoryId}-${slotId}` */
 const edits = ref<Record<string, { workday: string; holiday: string }>>({})
@@ -70,7 +71,7 @@ const slotChanges = computed(() =>
 
 const armed = ref(false)
 async function close() {
-  if (!report.value) return
+  if (!report.value || !decision.value) return
   if (!armed.value) {
     armed.value = true
     setTimeout(() => (armed.value = false), 4000)
@@ -81,7 +82,7 @@ async function close() {
   error.value = null
   try {
     report.value = await closeMonth(periodId.value, {
-      decision: decision.value,
+      decision: decision.value!,
       accountId: decision.value === 'Savings' ? accountId.value : null,
       slotChanges: slotChanges.value,
     })
@@ -246,7 +247,7 @@ function suggest(avgActual: number, current: number) {
         </section>
 
         <p v-if="!report.canClose" class="notice-line">{{ report.cannotCloseReason }}</p>
-        <button type="button" class="btn primary block" :disabled="!report.canClose || closing" @click="close">
+        <button type="button" class="btn primary block" :disabled="!report.canClose || closing || !decision" @click="close">
           {{ closing ? '月結中…' : armed ? '確認月結（之後這期就鎖住了）' : '月結' }}
         </button>
       </template>
