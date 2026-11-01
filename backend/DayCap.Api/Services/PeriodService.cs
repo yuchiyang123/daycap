@@ -178,6 +178,11 @@ public class PeriodService(
         if ((inPeriod.Count == 0 && livingInPeriod.Count == 0) || depth > 2) return view;
 
         var types = await db.CashAccounts.AsNoTracking().Where(a => a.UserId == period.UserId).ToDictionaryAsync(a => a.Id, a => a.Type, ct);
+        // 月結把結餘轉進存款（+）或從存款吸收缺口（−）：錢在生活帳戶和存款之間移動
+        var monthEndMoves = (await db.AssetAdjustments.AsNoTracking()
+            .Where(a => a.UserId == period.UserId && a.Source == "monthend").ToListAsync(ct)).Active();
+        // 這期一開始生活帳戶裡應該有的錢：上期結轉過來的（結餘帶進待分配池＝錢還在帳戶裡；缺口＝帳戶少了）
+        var carryIn = carryovers.Sum(c => c.Amount);
         var adjustments = (await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == period.UserId).ToListAsync(ct)).Active();
         var (debts, settlements) = await DebtMath.LoadAsync(db, period.UserId, ct);
         var prepayments = await InstallmentMath.PrepaymentsAsync(db, period.UserId, ct);
@@ -205,9 +210,21 @@ public class PeriodService(
             foreach (var c in livingInPeriod)
             {
                 var prev = living.LastOrDefault(x => x.Id != c.Id && (x.Date < c.Date || (x.Date == c.Date && x.CreatedAt < c.CreatedAt)));
-                if (prev is null || prev.Date < period.StartDate.AddDays(-100)) continue; // 第一次：只當起點
-                var flows = await LivingFlowsAsync(period, view, prev, c, cache, depth, ct);
-                next.Add(new ReconDiff(c.Id, c.Date, c.CreatedAt, prev.Net + flows, c.Net, c.UsePool, Living: true));
+                decimal expected;
+                if (prev is not null && prev.Date >= period.StartDate.AddDays(-100))
+                {
+                    // 跟上一次比：上次實際 + 之間的收支 − 月結轉進存款的錢
+                    expected = prev.Net + await LivingFlowsAsync(period, view, prev, c, cache, depth, ct)
+                               - monthEndMoves.Where(a => a.Date > prev.Date && a.Date <= c.Date).Sum(a => a.Amount);
+                }
+                else
+                {
+                    // 第一次：跟這期的記帳比（上期結轉過來的 + 發薪日起的收入 − 對帳那一刻之前的花費）
+                    expected = carryIn
+                               + await FlowsAsync(period, view, period.StartDate.AddDays(-1), c.Date.AddDays(-1), cache, depth, ct)
+                               + PartialFlow(view, c.Date, c.CreatedAt);
+                }
+                next.Add(new ReconDiff(c.Id, c.Date, c.CreatedAt, expected, c.Net, c.UsePool, Living: true));
             }
             var same = next.Count == diffs.Count && next.Zip(diffs).All(p => p.First.Id == p.Second.Id && p.First.Expected == p.Second.Expected);
             diffs = next;

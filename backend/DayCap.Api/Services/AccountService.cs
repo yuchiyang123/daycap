@@ -430,7 +430,7 @@ public class AccountService(DayCapDbContext db, IPeriodService periods, ISetting
 
         var after = await periods.ComputeAsync(await periods.LoadAsync(userId, period.Id, ct, tracking: false), ct, null, persist ? null : check);
         var rv = after.Reconciliations.FirstOrDefault(x => x.Living && x.Id == check.Id);
-        if (rv is null) // 第一次（或上一次太久以前）：只當起點
+        if (rv is null) // 不會發生（有期間就一定算得出來），保險起見
             return new ReconciliationResult(persist ? check.Id : null, check.Date, false, null, check.Net, check.Net, 0, 0, 0, 0, false,
                 before?.Pool.Balance ?? 0, after.Pool.Balance);
 

@@ -23,7 +23,7 @@ onMounted(() => {
   void loadCurrentPeriod() // 差額在本期的重播結果裡；資產頁不一定載入過
 })
 
-// 本期的差額（第一次是起點，沒有差額）
+// 本期的差額（其他期間的對帳顯示 —）
 const diffs = computed(() => new Map((store.period?.reconciliations ?? []).filter((r) => r.living).map((r) => [r.id, r])))
 
 async function remove(id: number) {
@@ -46,7 +46,7 @@ async function remove(id: number) {
       <button type="button" class="btn sm primary" @click="open = true">生活錢對帳</button>
     </div>
     <ul v-if="checks.length" class="list">
-      <li v-for="(c, i) in checks" :key="c.id" class="row">
+      <li v-for="c in checks" :key="c.id" class="row">
         <span class="d num muted">{{ shortDate(c.date) }}</span>
         <span class="t">
           <span class="num">帳戶 {{ money(c.accountsTotal) }} − 卡費 {{ money(c.unpaidCard) }} = <b>{{ money(c.net) }}</b></span>
@@ -56,7 +56,6 @@ async function remove(id: number) {
           <template v-if="diffs.get(c.id)">
             <span :class="diffs.get(c.id)!.diff < 0 ? 'bad' : diffs.get(c.id)!.diff > 0 ? 'good' : 'muted'">{{ signed(diffs.get(c.id)!.diff) }}</span>
           </template>
-          <span v-else-if="i === checks.length - 1" class="muted small">起點</span>
           <span v-else class="muted small">—</span>
         </span>
         <button type="button" class="btn quiet sm danger" @click="remove(c.id)">刪除</button>

@@ -9,8 +9,8 @@ import { logicalToday, money, shortDate, signed } from '../lib/format'
 
 /**
  * 生活錢對帳：薪轉戶、生活帳戶這些沒登記的帳戶加總，扣掉信用卡已刷未繳 = 實際剩下的生活錢。
- * 系統用上一次的實際 + 之後記的收入和花費推出「應該剩」，差額就是漏記（少）或多記（多）。
- * 第一次只當起點。先試算、確認才存。
+ * 「應該剩」：有上一次就從上一次的實際推，第一次就從這期的記帳推（上期結轉 + 薪水 − 到現在記的花費）。
+ * 差額：多了進待分配池，少了（漏記）先從池子扣。先試算、確認才存。
  */
 const emit = defineEmits<{ close: []; saved: [] }>()
 
@@ -120,11 +120,13 @@ async function submit() {
 
       <div class="impact" :class="{ loading }" aria-live="polite">
         <template v-if="preview && !preview.hasBaseline">
-          <p>這是第一次生活錢對帳，只當作起點，不會產生差額。</p>
-          <p class="muted small">之後每次對帳都會跟上一次比：上次剩的 + 之後的收入 − 之後記的花費（含固定支出、轉去存款的錢）＝應該剩。</p>
+          <p>這個日期不在任何一期裡，只記下金額，不算差額。</p>
         </template>
         <template v-else-if="preview">
-          <p class="num">應該剩 {{ money(preview.expected) }}（從 {{ shortDate(preview.baselineDate!) }} 的對帳推算）</p>
+          <p class="num">
+            應該剩 {{ money(preview.expected) }}
+            <span class="muted small">{{ preview.baselineDate ? `（從 ${shortDate(preview.baselineDate)} 的對帳推算）` : '（這期的薪水 − 到現在記的花費）' }}</span>
+          </p>
           <p class="num">實際剩 {{ money(preview.actual) }}</p>
           <p class="num" :class="preview.diff < 0 ? 'bad' : preview.diff > 0 ? 'good' : ''">
             差 <b>{{ signed(preview.diff) }}</b>

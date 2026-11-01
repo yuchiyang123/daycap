@@ -259,16 +259,20 @@ public sealed class AccountTests : IDisposable
         new(_clock.Current, accounts, card, usePool, null);
 
     [Fact]
-    public async Task First_living_check_is_only_a_starting_point()
+    public async Task First_living_check_compares_with_what_this_periods_ledger_says_is_left()
     {
         var period = await _periods.GetCurrentAsync("u");
+        // 這期記帳算出來應該剩：發薪日的收入 − 今天以前每天的花費（沒回報＝照預算）− 今天到期的固定支出
+        var shouldBeLeft = period.Income
+            - period.Days.Where(d => d.Date < _clock.Current).Sum(d => PeriodService.DayOutflow(period, d.Date))
+            - period.FixedCharges.Where(f => (f.DueDate ?? period.StartDate) == _clock.Current).Sum(f => f.Amount);
 
-        var result = await _accounts.CreateLivingCheckAsync("u", Living(40_000, 5_000));
+        var result = await _accounts.CreateLivingCheckAsync("u", Living(shouldBeLeft + 2_000, 0));
 
-        Assert.False(result.HasBaseline);
-        Assert.Equal(35_000, result.Actual);
-        Assert.Equal(0, result.Diff);
-        Assert.Equal(period.Pool.Balance, (await _periods.GetAsync("u", period.Id)).Pool.Balance);
+        Assert.True(result.HasBaseline);
+        Assert.Equal(shouldBeLeft, result.Expected);
+        Assert.Equal(2_000, result.Diff);  // 多出來的進待分配池
+        Assert.Equal(result.PoolBefore + 2_000, result.PoolAfter);
     }
 
     [Fact]
