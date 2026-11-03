@@ -91,7 +91,9 @@ public sealed class LedgerAndSettlementTests : IDisposable
         await AddAccount("薪轉", 100_000);
         var october = await _periods.GetCurrentAsync("u");
         var fun = october.Categories.Single(c => c.Name == "娛樂");
-        var psp = fun.Budget + october.Pool.Balance + 2000;
+        // 其他月額度分類沒花完的也算進結果（2026-11-03），所以要多花掉那些才會剛好超支 2,000
+        var otherEnvelopes = october.Categories.Where(c => c.Mode == BudgetMode.Envelope && c.CategoryId != fun.CategoryId).Sum(c => c.Budget);
+        var psp = fun.Budget + october.Pool.Balance + otherEnvelopes + 2000;
         await _entries.CreateAsync("u", october.Id, new CreateEntryRequest(
             _clock.Current, fun.CategoryId, null, EntryInputMode.Actual, psp, true, "PSP", null));
 

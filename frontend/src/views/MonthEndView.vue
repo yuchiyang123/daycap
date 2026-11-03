@@ -148,6 +148,10 @@ function suggest(avgActual: number, current: number) {
             <div>
               <span class="label">結果（收入 − 所有支出）</span>
               <span class="big num" :class="report.result >= 0 ? 'good' : 'bad'">{{ signed(report.result) }}</span>
+              <span v-if="report.envelopeLeftovers?.length" class="muted small num breakdown">
+                待分配池 {{ money(report.poolBalance ?? 0) }}
+                <template v-for="x in report.envelopeLeftovers" :key="x.categoryId"> ＋ {{ x.name }}剩 {{ money(x.amount) }}</template>
+              </span>
             </div>
             <div v-if="report.previousResult !== null">
               <span class="label">上一期</span>
@@ -303,6 +307,10 @@ function suggest(avgActual: number, current: number) {
 }
 .small {
   font-size: 12px;
+}
+.breakdown {
+  display: block;
+  margin-top: 4px;
 }
 .result {
   display: flex;

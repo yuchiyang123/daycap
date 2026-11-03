@@ -392,7 +392,7 @@ public class PeriodService(
         foreach (var id in ids)
         {
             var period = await LoadAsync(userId, id, ct);
-            var balance = (await ComputeAsync(period, ct)).Pool.Balance;
+            var balance = MonthEndService.ResultOf(await ComputeAsync(period, ct)); // 待分配池 + 月額度沒花完的
             period.SettledAt = clock.UtcNow;
             period.SettlementAmount = 0;
             var key = $"settlement:{period.Id}";

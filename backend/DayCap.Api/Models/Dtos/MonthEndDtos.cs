@@ -20,7 +20,13 @@ public record MonthEndReport(
     List<SlotSuggestion> Slots,
     List<GoalProgress> Goals,
     MonthEndSummary? Summary,
-    List<SubItemView>? SubItemOvers = null);
+    List<SubItemView>? SubItemOvers = null,
+    // 結果 = 待分配池 + 月額度分類（例如娛樂）沒花完的部分
+    decimal PoolBalance = 0,
+    List<EnvelopeLeftover>? EnvelopeLeftovers = null);
+
+/// <summary>月額度分類沒花完、月結時算進結餘的錢。</summary>
+public record EnvelopeLeftover(int CategoryId, string Name, decimal Amount);
 
 /// <summary>例：「午餐 12 天超預算，共多 1,440」。</summary>
 public record OverspendItem(string Label, int Days, decimal Total);

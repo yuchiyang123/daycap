@@ -21,6 +21,7 @@ public interface IMonthEndService
 /// 4. 決定下期是否調整時段金額（存成從下一期第一天起生效的設定版本）；缺口怎麼補。
 /// 5. 存成不可修改的快照，這期從此不能再改。
 /// 6. 結餘依決定放進下一期的待分配池或轉進存款；缺口依決定結轉、分兩期或從存款吸收。
+/// 結果 = 待分配池 + 月額度分類沒花完的部分（使用者 2026-11-03 決定：娛樂費剩下的也算結餘）。
 /// </summary>
 public class MonthEndService(
     DayCapDbContext db,
@@ -31,6 +32,14 @@ public class MonthEndService(
 {
     /// <summary>發薪日前幾天開始可以月結（和提醒同一天）。</summary>
     public const int OpenDaysBeforePayday = NotificationService.ReminderDaysBeforePayday;
+
+    /// <summary>月額度分類（例如娛樂）沒花完的部分；超過的已經從待分配池扣了，不算。</summary>
+    public static List<EnvelopeLeftover> EnvelopeLeftovers(PeriodView view) =>
+        view.Categories.Where(c => c.Mode == BudgetMode.Envelope && c.Budget - c.Spent > 0)
+            .Select(c => new EnvelopeLeftover(c.CategoryId, c.Name, c.Budget - c.Spent)).ToList();
+
+    /// <summary>這期結果：待分配池 + 月額度沒花完的。</summary>
+    public static decimal ResultOf(PeriodView view) => view.Pool.Balance + EnvelopeLeftovers(view).Sum(x => x.Amount);
 
     public async Task<MonthEndReport> ReportAsync(string userId, int periodId, CancellationToken ct = default)
     {
@@ -59,7 +68,7 @@ public class MonthEndService(
         return new MonthEndReport(
             period.Id, period.StartDate, period.EndDate,
             existing is not null, reason is null, reason, needsRecon,
-            existing?.Result ?? view.Pool.Balance,
+            existing?.Result ?? ResultOf(view),
             previous,
             TopOverspends(view),
             view.Reconciliations.Sum(r => r.Diff),
@@ -67,7 +76,9 @@ public class MonthEndService(
             await GoalsAsync(userId, view, ct),
             summary,
             // 細項中超最多的（§12.2 第 3 點、§13）
-            (view.SubItems ?? []).Where(x => x.Over > 0).OrderByDescending(x => x.Over).Take(5).ToList());
+            (view.SubItems ?? []).Where(x => x.Over > 0).OrderByDescending(x => x.Over).Take(5).ToList(),
+            view.Pool.Balance,
+            EnvelopeLeftovers(view));
     }
 
     public async Task<MonthEndReport> CloseAsync(string userId, int periodId, CloseMonthRequest req, CancellationToken ct = default)
@@ -77,7 +88,7 @@ public class MonthEndService(
 
         var period = await periods.LoadAsync(userId, periodId, ct);
         var view = await periods.ComputeAsync(period, ct);
-        var result = view.Pool.Balance;
+        var result = ResultOf(view);
         var next = period.EndDate.AddDays(1);
         var label = $"{period.StartDate:M/d}–{period.EndDate:M/d}";
         // 要存進或從存款扣的帳戶：先檢查，選錯就整個不存（不能留下半套的月結）

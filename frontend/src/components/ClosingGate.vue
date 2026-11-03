@@ -87,6 +87,10 @@ async function submit() {
         <div class="result">
           <span class="label">{{ surplus ? '上期結餘' : '上期超支' }}</span>
           <span class="big num" :class="report.result > 0 ? 'good' : report.result < 0 ? 'bad' : ''">{{ signed(report.result) }}</span>
+          <span v-if="report.envelopeLeftovers?.length" class="sub num">
+            待分配池 {{ money(report.poolBalance ?? 0) }}
+            <template v-for="x in report.envelopeLeftovers" :key="x.categoryId"> ＋ {{ x.name }}沒花完 {{ money(x.amount) }}</template>
+          </span>
         </div>
 
         <template v-if="report.canClose">

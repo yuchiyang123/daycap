@@ -171,6 +171,27 @@ public sealed class GuardrailAndMonthEndTests : IDisposable
     }
 
     [Fact]
+    public async Task Month_end_result_includes_what_is_left_of_monthly_envelopes()
+    {
+        var october = await _periods.GetCurrentAsync("u");
+        var profile = await _settings.EnsureProfileAsync("u");
+        profile.SavingsOnlyAccounts = true; // 月結不用先對帳
+        await _db.SaveChangesAsync();
+        var fun = october.Categories.Single(c => c.Name == "娛樂");
+        Assert.Equal(BudgetMode.Envelope, fun.Mode);
+        await _entries.CreateAsync("u", october.Id, new CreateEntryRequest(_clock.Current, fun.CategoryId, null, EntryInputMode.Actual, 1_000, true, "電影", null));
+
+        _clock.Current = new DateOnly(2026, 10, 29);
+        var report = await _monthEnd.ReportAsync("u", october.Id);
+        var left = Assert.Single(report.EnvelopeLeftovers!, x => x.CategoryId == fun.CategoryId);
+        Assert.Equal(fun.Budget - 1_000, left.Amount);
+        Assert.Equal(report.PoolBalance + report.EnvelopeLeftovers!.Sum(x => x.Amount), report.Result);
+
+        var closed = await _monthEnd.CloseAsync("u", october.Id, new CloseMonthRequest(ShortfallChoice.Pool, null, []));
+        Assert.Equal(report.Result, closed.Summary!.CarryAmount); // 娛樂剩的也帶進下一期
+    }
+
+    [Fact]
     public async Task Month_end_surplus_can_go_to_savings_instead_of_the_next_pool()
     {
         await _accounts.SaveAccountsAsync("u", [new AccountEdit(0, "玉山", AccountType.Bank, 50_000)]);
