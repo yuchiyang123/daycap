@@ -46,4 +46,9 @@ public record SlotChange(int CategoryId, int SlotId, decimal WorkdayAmount, deci
 public record CloseMonthRequest(ShortfallChoice Decision, int? AccountId, List<SlotChange> SlotChanges);
 
 /// <summary>已完成的月結（快照裡的重點）。</summary>
-public record MonthEndSummary(DateTime ClosedAt, decimal Result, ShortfallChoice Decision, decimal CarryAmount, string Message);
+public record MonthEndSummary(DateTime ClosedAt, decimal Result, ShortfallChoice Decision, decimal CarryAmount, string Message,
+    // 結餘轉進存款時，存款帳戶實際記了多少（改過實際轉帳金額就會跟 Result 不同）
+    decimal? SavingsMoved = null);
+
+/// <summary>月結結餘實際轉進存款的金額（例如扣了手續費），剩下的留在生活錢裡。</summary>
+public record AmendMonthEndSavingsRequest(decimal Amount);

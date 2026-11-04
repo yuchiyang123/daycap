@@ -11,6 +11,7 @@ public interface IMonthEndService
 {
     Task<MonthEndReport> ReportAsync(string userId, int periodId, CancellationToken ct = default);
     Task<MonthEndReport> CloseAsync(string userId, int periodId, CloseMonthRequest req, CancellationToken ct = default);
+    Task<MonthEndReport> AmendSavingsAsync(string userId, int periodId, AmendMonthEndSavingsRequest req, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -48,8 +49,16 @@ public class MonthEndService(
         var today = await settings.LogicalTodayAsync(userId, ct);
 
         var existing = await db.MonthEnds.AsNoTracking().FirstOrDefaultAsync(m => m.UserId == userId && m.PeriodId == periodId, ct);
-        MonthEndSummary? summary = existing is null ? null
-            : new MonthEndSummary(existing.ClosedAt, existing.Result, existing.Decision, existing.CarryAmount, Message(existing.Result, existing.Decision));
+        MonthEndSummary? summary = null;
+        if (existing is not null)
+        {
+            var moved = existing.Result > 0 && existing.Decision == ShortfallChoice.Savings
+                ? (await SavingsMoveAsync(userId, periodId, ct))?.Amount
+                : null;
+            var message = Message(existing.Result, existing.Decision);
+            if (moved is not null && moved != existing.Result) message += $"實際轉了 {moved:N0}，其餘 {existing.Result - moved:N0} 留在生活錢（手續費等）。";
+            summary = new MonthEndSummary(existing.ClosedAt, existing.Result, existing.Decision, existing.CarryAmount, message, moved);
+        }
 
         var openFrom = period.EndDate.AddDays(1 - OpenDaysBeforePayday);
         // 帳戶只記儲蓄時，對帳不算差額，月結也就不需要先完整對帳
@@ -161,6 +170,35 @@ public class MonthEndService(
         await db.SaveChangesAsync(ct);
         return await ReportAsync(userId, periodId, ct);
     }
+
+    /// <summary>
+    /// 結餘轉進存款後，改成實際轉過去的金額（例如扣了手續費）。月結本身不變（快照、結果照舊），
+    /// 只換掉那筆存款紀錄：作廢舊的、新增一筆取代它（只新增，§2.2）。沒轉過去的部分留在生活錢，下次生活錢對帳會對到。
+    /// </summary>
+    public async Task<MonthEndReport> AmendSavingsAsync(string userId, int periodId, AmendMonthEndSavingsRequest req, CancellationToken ct = default)
+    {
+        var monthEnd = await db.MonthEnds.AsNoTracking().FirstOrDefaultAsync(m => m.UserId == userId && m.PeriodId == periodId, ct)
+                       ?? throw new ValidationException("這期還沒月結。");
+        if (monthEnd.Result <= 0 || monthEnd.Decision != ShortfallChoice.Savings)
+            throw new ValidationException("只有「結餘轉進存款」的月結可以改實際轉帳金額。");
+        var old = await SavingsMoveAsync(userId, periodId, ct) ?? throw new ValidationException("找不到這次月結轉進存款的紀錄。");
+        if (req.Amount <= 0 || req.Amount > monthEnd.Result)
+            throw new ValidationException($"金額要大於 0、不超過結餘 {monthEnd.Result:N0}。");
+        if (req.Amount == old.Amount) return await ReportAsync(userId, periodId, ct);
+
+        db.AssetAdjustments.Add(new AssetAdjustment
+        {
+            UserId = userId, CashAccountId = old.CashAccountId, Date = old.Date, Amount = req.Amount,
+            // 登錄時間沿用原本那筆：生活錢對帳靠它判斷錢是在哪兩次對帳之間移走的
+            Note = old.Note, Source = old.Source, PeriodId = old.PeriodId, ReplacesId = old.Id, CreatedAt = old.CreatedAt,
+        });
+        await db.SaveChangesAsync(ct);
+        return await ReportAsync(userId, periodId, ct);
+    }
+
+    private async Task<AssetAdjustment?> SavingsMoveAsync(string userId, int periodId, CancellationToken ct) =>
+        (await db.AssetAdjustments.AsNoTracking().Where(a => a.UserId == userId && a.Source == "monthend").ToListAsync(ct))
+            .Active().Where(a => a.PeriodId == periodId && a.Amount > 0).OrderBy(a => a.Id).LastOrDefault();
 
     private async Task<CashAccount> SavingsAccountAsync(string userId, int? accountId, string missing, CancellationToken ct)
     {

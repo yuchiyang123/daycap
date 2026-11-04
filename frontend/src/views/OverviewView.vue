@@ -165,6 +165,7 @@ async function savePayday() {
       </div>
       <div class="head-actions">
         <RouterLink to="/report" class="btn sm">報告・PDF</RouterLink>
+        <RouterLink v-if="period.previousPeriodId && !period.previousPeriodNeedsClosing" :to="`/month-end/${period.previousPeriodId}`" class="btn sm">上期月結</RouterLink>
         <button class="btn sm" @click="showIncome = true">本期薪資</button>
         <button class="btn sm primary" :disabled="period.pool.balance <= 0" @click="showAllocate = true">分配剩餘</button>
       </div>

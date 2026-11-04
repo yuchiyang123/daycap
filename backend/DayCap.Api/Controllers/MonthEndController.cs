@@ -18,4 +18,9 @@ public class MonthEndController(IMonthEndService monthEnd) : ControllerBase
     [HttpPost("{periodId:int}")]
     public Task<MonthEndReport> Close(int periodId, CloseMonthRequest req, CancellationToken ct) =>
         monthEnd.CloseAsync(User.GetUserId(), periodId, req, ct);
+
+    /// <summary>結餘轉進存款後，改成實際轉過去的金額。</summary>
+    [HttpPut("{periodId:int}/savings")]
+    public Task<MonthEndReport> AmendSavings(int periodId, AmendMonthEndSavingsRequest req, CancellationToken ct) =>
+        monthEnd.AmendSavingsAsync(User.GetUserId(), periodId, req, ct);
 }

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import Skeleton from '../components/Skeleton.vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import ReconcileSheet from '../components/ReconcileSheet.vue'
-import { closeMonth, getAccounts, getMonthEnd } from '../api/endpoints'
+import { amendMonthEndSavings, closeMonth, getAccounts, getMonthEnd } from '../api/endpoints'
 import type { AccountView, MonthEndReport, ShortfallChoice } from '../api/types'
 import { loadCurrentPeriod } from '../lib/store'
 import { money, shortDate, signed } from '../lib/format'
@@ -94,6 +94,33 @@ async function close() {
   }
 }
 
+// 已月結、結餘轉進存款：可以改成實際轉過去的金額（例如扣了手續費）
+const moved = ref('')
+watch(
+  () => report.value?.summary?.savingsMoved,
+  (v) => (moved.value = v == null ? '' : String(v)),
+  { immediate: true },
+)
+const movedValue = computed(() => {
+  const n = Number(moved.value.replace(/,/g, '').trim())
+  const max = report.value?.summary?.result ?? 0
+  return moved.value.trim() !== '' && Number.isFinite(n) && n > 0 && n <= max ? Math.round(n) : null
+})
+const savingMoved = ref(false)
+async function saveMoved() {
+  if (movedValue.value === null) return
+  savingMoved.value = true
+  error.value = null
+  try {
+    report.value = await amendMonthEndSavings(periodId.value, movedValue.value)
+    await loadCurrentPeriod(true)
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    savingMoved.value = false
+  }
+}
+
 function suggest(avgActual: number, current: number) {
   if (avgActual <= 0) return null
   const rounded = Math.round(avgActual / 5) * 5
@@ -119,6 +146,18 @@ function suggest(avgActual: number, current: number) {
         <span class="label">這期結果</span>
         <span class="big num" :class="report.summary.result >= 0 ? 'good' : 'bad'">{{ signed(report.summary.result) }}</span>
         <p>{{ report.summary.message }}</p>
+        <form v-if="report.summary.savingsMoved != null" class="moved" @submit.prevent="saveMoved">
+          <label class="field">
+            實際轉進存款的金額
+            <span class="moved-row">
+              <input v-model="moved" class="input compact num" inputmode="numeric" aria-label="實際轉進存款的金額" />
+              <button type="submit" class="btn sm" :disabled="savingMoved || movedValue === null || movedValue === report.summary.savingsMoved">
+                {{ savingMoved ? '儲存中…' : '更新' }}
+              </button>
+            </span>
+          </label>
+          <p class="muted small">扣了手續費、或實際剩的比較少時改這裡。沒轉過去的部分算還在生活錢裡，下次生活錢對帳會對到。</p>
+        </form>
         <p class="muted small">月結時間 {{ new Date(report.summary.closedAt).toLocaleString('zh-TW') }}・這期已鎖住，之後補登會記在當期。</p>
       </section>
 
@@ -307,6 +346,26 @@ function suggest(avgActual: number, current: number) {
 }
 .small {
   font-size: 12px;
+}
+.moved {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.moved .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+.moved-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.moved-row .input {
+  width: 140px;
 }
 .breakdown {
   display: block;

@@ -213,9 +213,12 @@ public class PeriodService(
                 decimal expected;
                 if (prev is not null && prev.Date >= period.StartDate.AddDays(-100))
                 {
-                    // 跟上一次比：上次實際 + 之間的收支 − 月結轉進存款的錢
+                    // 跟上一次比：上次實際 + 之間的收支 − 月結轉進存款的錢。
+                    // 月結記在上期最後一天，但通常是那天對完帳之後才做，所以同一天要再看登錄時間（2026-11-05 修）
                     expected = prev.Net + await LivingFlowsAsync(period, view, prev, c, cache, depth, ct)
-                               - monthEndMoves.Where(a => a.Date > prev.Date && a.Date <= c.Date).Sum(a => a.Amount);
+                               - monthEndMoves.Where(a => (a.Date > prev.Date || (a.Date == prev.Date && a.CreatedAt > prev.CreatedAt))
+                                                          && (a.Date < c.Date || (a.Date == c.Date && a.CreatedAt <= c.CreatedAt)))
+                                   .Sum(a => a.Amount);
                 }
                 else
                 {
@@ -248,6 +251,7 @@ public class PeriodService(
         {
             Closed = period.ClosedAt is not null,
             PreviousPeriodNeedsClosing = previous is { ClosedAt: null } ? previous.Id : null,
+            PreviousPeriodId = previous?.Id,
         };
     }
 

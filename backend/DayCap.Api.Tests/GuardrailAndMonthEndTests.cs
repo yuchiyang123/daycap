@@ -221,6 +221,43 @@ public sealed class GuardrailAndMonthEndTests : IDisposable
     }
 
     [Fact]
+    public async Task Savings_moved_at_month_end_can_be_amended_and_living_checks_expect_it_to_leave()
+    {
+        await _accounts.SaveAccountsAsync("u", [new AccountEdit(0, "玉山", AccountType.Bank, 50_000)]);
+        var october = await _periods.GetCurrentAsync("u");
+        var bankId = (await _accounts.GetAsync("u")).Accounts.Single().Id;
+        var profile = await _settings.EnsureProfileAsync("u");
+        profile.SavingsOnlyAccounts = true;
+        await _db.SaveChangesAsync();
+        await _db.PoolTransfers.AddAsync(new PoolTransfer { PeriodId = october.Id, Date = october.StartDate, Amount = 1_200, Note = "測試結餘", CreatedAt = _clock.UtcNow });
+        await _db.SaveChangesAsync();
+
+        // 最後一天先對生活錢（對得上），再月結把結餘轉進存款：月結紀錄跟對帳同一天、但比較晚
+        _clock.Current = october.EndDate;
+        var last = (await _accounts.PreviewLivingCheckAsync("u", new CreateLivingCheckRequest(_clock.Current, 0, 0, true, null))).Expected;
+        await _accounts.CreateLivingCheckAsync("u", new CreateLivingCheckRequest(_clock.Current, last, 0, true, null));
+        var before = (await _accounts.GetAsync("u")).Accounts.Single().Balance;
+        var closed = await _monthEnd.CloseAsync("u", october.Id, new CloseMonthRequest(ShortfallChoice.Savings, bankId, []));
+        Assert.Equal(closed.Result, closed.Summary!.SavingsMoved);
+
+        _clock.Current = october.EndDate.AddDays(1);
+        await _periods.GetCurrentAsync("u"); // 建出新的一期
+        var probe = new CreateLivingCheckRequest(_clock.Current, 0, 0, true, null);
+        var expectedFull = (await _accounts.PreviewLivingCheckAsync("u", probe)).Expected;
+
+        // 實際只轉了結餘 − 15（手續費）
+        var amended = await _monthEnd.AmendSavingsAsync("u", october.Id, new AmendMonthEndSavingsRequest(closed.Result - 15));
+        Assert.Equal(closed.Result, amended.Summary!.Result); // 月結結果不變
+        Assert.Equal(closed.Result - 15, amended.Summary.SavingsMoved);
+        Assert.Equal(before + closed.Result - 15, (await _accounts.GetAsync("u")).Accounts.Single().Balance);
+        // 生活錢少轉走 15 → 應該剩的多 15（之前沒算到月結轉走的錢的話，兩次會一樣）
+        Assert.Equal(expectedFull + 15, (await _accounts.PreviewLivingCheckAsync("u", probe)).Expected);
+
+        await Assert.ThrowsAsync<Common.ValidationException>(() =>
+            _monthEnd.AmendSavingsAsync("u", october.Id, new AmendMonthEndSavingsRequest(closed.Result + 1)));
+    }
+
+    [Fact]
     public async Task Month_end_needs_a_reconciliation_then_carries_the_result_and_locks_the_period()
     {
         await _accounts.SaveAccountsAsync("u", [new AccountEdit(0, "薪轉", AccountType.Bank, 50_000)]);

@@ -383,6 +383,8 @@ export interface PeriodView {
   previousPeriodNeedsClosing: number | null
   /** 類別細項彙總（§13） */
   subItems?: SubItemView[] | null
+  /** 上一期的 Id（看上期月結） */
+  previousPeriodId?: number | null
 }
 
 export interface MonthEndReport {
@@ -409,7 +411,7 @@ export interface MonthEndReport {
     avgPlanned: number
   }[]
   goals: { name: string; current: number; target: number; progress: number; targetDate: string; estimatedDate: string | null }[]
-  summary: { closedAt: string; result: number; decision: ShortfallChoice; carryAmount: number; message: string } | null
+  summary: { closedAt: string; result: number; decision: ShortfallChoice; carryAmount: number; message: string; savingsMoved?: number | null } | null
   subItemOvers?: SubItemView[] | null
   /** 結果 = 待分配池 + 月額度分類沒花完的 */
   poolBalance?: number

@@ -155,6 +155,9 @@ export const closeMonth = (
   periodId: number,
   body: { decision: ShortfallChoice; accountId: number | null; slotChanges: { categoryId: number; slotId: number; workdayAmount: number; holidayAmount: number }[] },
 ) => api<MonthEndReport>(`/api/month-end/${periodId}`, { method: 'POST', body })
+/** 結餘轉進存款後，改成實際轉過去的金額 */
+export const amendMonthEndSavings = (periodId: number, amount: number) =>
+  api<MonthEndReport>(`/api/month-end/${periodId}/savings`, { method: 'PUT', body: { amount } })
 
 // ---- onboarding（§20）----
 export const getOnboarding = () => api<OnboardingState>('/api/onboarding')

@@ -33,7 +33,9 @@ public record PeriodView(
     bool Closed = false,
     int? PreviousPeriodNeedsClosing = null,
     // 類別細項（§13）：各細項這期花了多少、上限、超過多少
-    List<SubItemView>? SubItems = null);
+    List<SubItemView>? SubItems = null,
+    // 上一期的 Id（看上期月結、改實際轉進存款的金額用）
+    int? PreviousPeriodId = null);
 
 public record SubItemView(int CategoryId, string Name, decimal? Cap, decimal Spent, decimal Over);
 
